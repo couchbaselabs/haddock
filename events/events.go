@@ -17,7 +17,7 @@ import (
     "k8s.io/client-go/tools/cache"
 )
 
-var clusterName = "cb_example" 
+var clusterName = "cb-example" 
 
 func StartEventWatcher(ctx context.Context, clientset *kubernetes.Clientset, dynamicClient dynamic.Interface) {
     namespace := os.Getenv("WATCH_NAMESPACE")
@@ -67,15 +67,16 @@ func isRelevantEvent(event *v1.Event, clientset *kubernetes.Clientset, dynamicCl
 
     if event.InvolvedObject.Kind == "Pod" {
         labels := getObjectLabels(clientset, dynamicClient, event.InvolvedObject)
+        
 
         if labels["couchbase_cluster"] == clusterName || labels["app"] == "couchbase-operator" {
-            debug.Println("Relevant event")
+            debug.Println("Relevant pod event")
             return true
         }
     }
 
     if event.InvolvedObject.Kind == "CouchbaseCluster" && event.InvolvedObject.Name == clusterName {
-        debug.Println("Relevant event")
+        debug.Println("Relevant cluster event")
         return true
     }
 
