@@ -1,30 +1,36 @@
 package main
 
 import (
-	"context"
-	"log"
+    "context"
+    "log"
 
-	"cod/events"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
+    "cod/events"
+    "k8s.io/client-go/dynamic"
+    "k8s.io/client-go/kubernetes"
+    "k8s.io/client-go/rest"
 )
 
 func main() {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		log.Fatalf("Failed to get in-cluster config: %v", err)
-	}
+    config, err := rest.InClusterConfig()
+    if err != nil {
+        log.Fatalf("Failed to get in-cluster config: %v", err)
+    }
 
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		log.Fatalf("Failed to create Kubernetes client: %v", err)
-	}
+    clientset, err := kubernetes.NewForConfig(config)
+    if err != nil {
+        log.Fatalf("Failed to create Kubernetes client: %v", err)
+    }
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+    dynamicClient, err := dynamic.NewForConfig(config)
+    if err != nil {
+        log.Fatalf("Failed to create dynamic client: %v", err)
+    }
 
-	events.StartEventWatcher(ctx, clientset)
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
 
-	// Block forever (or until a signal is received)
-	select {}
+    events.StartEventWatcher(ctx, clientset, dynamicClient)
+
+    // Block forever (or until a signal is received)
+    select {}
 }
