@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  labels:
+    app: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+    scrape_configs:
+      - job_name: 'couchbase-operator-metrics'
+        static_configs:
+          - targets: ['localhost:8383']
+      - job_name: 'ubuntu-sidecar-events'
+        static_configs:
+          - targets: ['localhost:8394']

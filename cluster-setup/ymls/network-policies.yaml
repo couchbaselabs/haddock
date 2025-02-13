@@ -1,0 +1,87 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all-except-dns
+  # Prevent any traffic for all pods apart from that we specifically allow.
+  # This is taken from the Kubernetes documentation with a tweak to allow DNS.
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  egress:
+  # Allow DNS resolution, primarily for Couchbase pods but it triggers other
+  # hard to debug connection issues sometimes too so be aware if this is moved to
+  # the later rules.
+  - ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: couchbase-operator-policy
+  # The operator needs to talk to server pods in its namespace,
+  # plus the K8S API and the DAC admission hook.
+  #
+  # If the operator is in another namespace (cluster wide) then the rules
+  # will need a namespace selector to allow that.
+  # Remember that any rules need to match on both ends to allow traffic, e.g.
+  # if you have a deny-all default and only allow traffic out of the operator
+  # but not in on the server pods then it will be prevented.
+spec:
+  # Select operator pods
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: couchbase-operator
+  # No ingress required as traffic is always out to other components.
+  policyTypes:
+    - Egress
+  egress:
+  # Allow all traffic to Couchbase Server pods
+  - to:
+    - podSelector:
+        matchLabels:
+          app: couchbase
+  # Allow traffic to the K8S API server IP and port only
+  - ports:
+    - port: $API_SERVER_PORT
+      protocol: TCP
+    to:
+    - ipBlock:
+        cidr: $API_SERVER_IP/32
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: couchbase-namespace-policy
+  # Couchbase server pods need to talk to each other in the same namespace.
+  # They also need to allow the operator to control them.
+spec:
+  # Select all Couchbase Server pods
+  podSelector:
+    matchLabels:
+      app: couchbase
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow all traffic from other Couchbase Server pods in the same namespace,
+    - from:
+      - podSelector:
+          matchLabels:
+            app: couchbase
+    # Allow all traffic from the operator.
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: couchbase-operator
+  egress:
+    # Allow all traffic to other Couchbase Server pods in the same namespace.
+    - to:
+      - podSelector:
+          matchLabels:
+            app: couchbase

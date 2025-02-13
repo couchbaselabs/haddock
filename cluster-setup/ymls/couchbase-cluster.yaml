@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cb-example-auth
+type: Opaque
+data:
+  username: QWRtaW5pc3RyYXRvcg==  # Administrator
+  password: cGFzc3dvcmQ=          # password
+---
+apiVersion: couchbase.com/v2
+kind: CouchbaseBucket
+metadata:
+  name: default  
+spec:
+  memoryQuota: 128Mi
+---
+apiVersion: couchbase.com/v2
+kind: CouchbaseCluster
+metadata:
+  name: cb-example  
+spec:
+  #antiAffinity: true
+  image: couchbase/server:7.6.0  
+  security:
+    adminSecret: cb-example-auth
+  networking:
+    exposeAdminConsole: true
+    adminConsoleServices:
+    - data
+  buckets:
+    managed: true
+  servers:
+  - size: 3  
+    name: all_services
+    services:
+    - data
+    - index
+    - query
+    - search
+    - eventing
+    - analytics
+
+

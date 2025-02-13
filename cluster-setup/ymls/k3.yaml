@@ -1,0 +1,11 @@
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: haddock
+servers: 1
+agents: 2
+volumes:
+  - volume: /Users/aayush.senapati/development:/mnt/development
+    nodeFilters:
+      - agent:*
+      - server:*

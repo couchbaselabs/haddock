@@ -3,8 +3,12 @@ package main
 import (
     "context"
     "log"
+	"os"
 
     "cod/events"
+	"cod/utils"
+
+
     "k8s.io/client-go/dynamic"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
@@ -29,7 +33,23 @@ func main() {
     ctx, cancel := context.WithCancel(context.Background())
     defer cancel()
 
-    events.StartEventWatcher(ctx, clientset, dynamicClient)
+    namespace := os.Getenv("WATCH_NAMESPACE")
+    if namespace == "" {
+        log.Fatalf("WATCH_NAMESPACE environment variable not set")
+    }
+
+    clusters, err := utils.GetCouchbaseClusters(dynamicClient, namespace)
+    if err != nil {
+        log.Fatalf("Error fetching Couchbase clusters: %v", err)
+    }
+
+    if len(clusters) == 0 {
+        log.Fatalf("No Couchbase clusters found")
+    }
+
+    clusterName := utils.SelectCluster(clusters)
+
+    events.StartEventWatcher(ctx, clientset, dynamicClient, clusterName)
 
     // Block forever (or until a signal is received)
     select {}
