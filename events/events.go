@@ -61,7 +61,7 @@ func StartEventWatcher(ctx context.Context, clientset *kubernetes.Clientset, dyn
 func isRelevantEvent(event *v1.Event, clientset *kubernetes.Clientset, dynamicClient dynamic.Interface, clusterName string) bool {
     debug.Println("-------------------------------------------------------")
     debug.Println("Event kind:", event.InvolvedObject.Kind)
-    debug.Println("Event objexct name:", event.InvolvedObject.Name)
+    debug.Println("Event object name:", event.InvolvedObject.Name)
     debug.Println("Event name:", event.Name)
     debug.Println("Event message:", event.Message)
 

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cluster Events</title>
+    <script src="../static/htmx.min.js"></script>
+</head>
+<body>
+    <h1>Select a Cluster</h1>
+    <select id="clusterDropdown" hx-get="/events" hx-target="#eventsDiv" hx-trigger="change">
+        <!-- Options will be populated by Go code -->
+    </select>
+
+    <div id="eventsDiv">
+        <!-- Events will be displayed here -->
+    </div>
+
+    <script>
+        const socket = new WebSocket("ws://localhost:8080/ws");
+        socket.onmessage = function(event) {
+            const eventData = JSON.parse(event.data);
+            const eventsDiv = document.getElementById("eventsDiv");
+            const eventElement = document.createElement("div");
+            eventElement.innerHTML = `<p>${eventData.message}</p>`;
+            eventsDiv.appendChild(eventElement);
+        };
+    </script>
+</body>
+</html>
