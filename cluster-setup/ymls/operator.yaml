@@ -174,7 +174,7 @@ metadata:
   creationTimestamp: null
   name: couchbase-operator
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: couchbase-operator
@@ -213,13 +213,13 @@ spec:
         name: couchbase-operator
         ports:
         - containerPort: 8080
-          name: http
+          name: http-pprof
         - containerPort: 8383
           name: prom-metrics
         readinessProbe:
           httpGet:
             path: /readyz
-            port: http
+            port: http-pprof
             scheme: HTTP
         resources: {}
       - name: ubuntu-sidecar
@@ -235,9 +235,9 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
-        # ports:
-        # - containerPort: 8084
-        #   name: prom-events
+        ports:
+        - containerPort: 3000
+          name: cod
         resources: {}
         volumeMounts:
         - name: logs-volume
@@ -298,6 +298,9 @@ spec:
     port: 8080
     protocol: TCP
     targetPort: 8080
+  - name: cod
+    port: 3000
+    protocol: TCP
   - name: http-prometheus-metrics
     port: 8383
     protocol: TCP

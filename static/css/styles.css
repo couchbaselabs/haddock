@@ -1,0 +1,153 @@
+:root {
+    --primary-color: #2c3e50;
+    --secondary-color: #3498db;
+    --background-color: #f5f6fa;
+    --border-color: #dcdde1;
+    --text-color: #2d3436;
+    --shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+header h1 {
+    color: var(--primary-color);
+    font-size: 2.5rem;
+    margin: 20px 0;
+}
+
+.main-content {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 30px;
+}
+
+.clusters-section {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+}
+
+.clusters-section h2 {
+    margin-bottom: 20px;
+    color: var(--primary-color);
+}
+
+.clusters-grid {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 20px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.cluster-label {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    background: var(--background-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.cluster-label:hover {
+    background: #e8f0fe;
+}
+
+.cluster-checkbox {
+    margin-right: 10px;
+}
+
+.cluster-name {
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.fetch-button {
+    width: 100%;
+    padding: 12px;
+    background-color: var(--secondary-color);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    transition: background-color 0.3s ease;
+}
+
+.fetch-button:hover {
+    background-color: #2980b9;
+}
+
+.events-section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    align-content: start;
+}
+
+.cluster-events {
+    background: white;
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+}
+
+.cluster-events h2 {
+    padding: 15px;
+    background-color: var(--primary-color);
+    color: white;
+    margin: 0;
+    font-size: 1.2rem;
+}
+
+.events-content {
+    height: 400px;
+    overflow-y: auto;
+    padding: 15px;
+}
+
+.event-item {
+    background: var(--background-color);
+    padding: 12px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+}
+
+.event-item:last-child {
+    margin-bottom: 0;
+}
+
+.event-property {
+    display: inline-block;
+    margin-right: 15px;
+    font-size: 0.9rem;
+}
+
+.event-property strong {
+    color: var(--primary-color);
+}

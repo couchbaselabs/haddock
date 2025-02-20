@@ -4,27 +4,33 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cluster Events</title>
-    <script src="../static/htmx.min.js"></script>
+    <link rel="stylesheet" href="/static/css/styles.css">
 </head>
 <body>
-    <h1>Select a Cluster</h1>
-    <select id="clusterDropdown" hx-get="/events" hx-target="#eventsDiv" hx-trigger="change">
-        <!-- Options will be populated by Go code -->
-    </select>
+    <div class="container">
+        <header>
+            <h1>Kubernetes Cluster Events Monitor</h1>
+        </header>
+        
+        <div class="main-content">
+            <div class="clusters-section">
+                <h2>Select Clusters</h2>
+                <div id="clustersContainer" class="clusters-grid">
+                    {{range .}}
+                    <label id="cluster-{{.}}" class="cluster-label">
+                        <input type="checkbox" class="cluster-checkbox" value="{{.}}">
+                        <span class="cluster-name">{{.}}</span>
+                    </label>
+                    {{end}}
+                </div>
+                <button id="fetchEventsButton" class="fetch-button">Fetch Events</button>
+            </div>
 
-    <div id="eventsDiv">
-        <!-- Events will be displayed here -->
+            <div id="eventsContainer" class="events-section">
+                <!-- Events will be displayed here -->
+            </div>
+        </div>
     </div>
-
-    <script>
-        const socket = new WebSocket("ws://localhost:8080/ws");
-        socket.onmessage = function(event) {
-            const eventData = JSON.parse(event.data);
-            const eventsDiv = document.getElementById("eventsDiv");
-            const eventElement = document.createElement("div");
-            eventElement.innerHTML = `<p>${eventData.message}</p>`;
-            eventsDiv.appendChild(eventElement);
-        };
-    </script>
+    <script src="/static/js/main.js"></script>
 </body>
 </html>

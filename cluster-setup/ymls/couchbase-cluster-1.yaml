@@ -9,7 +9,7 @@ spec:
 apiVersion: couchbase.com/v2
 kind: CouchbaseCluster
 metadata:
-  name: cb-example-1  
+  name: cb-example-1
 spec:
   image: couchbase/server:7.6.0  
   security:
