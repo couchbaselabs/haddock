@@ -179,6 +179,63 @@ header h1 {
     background: #666;
 }
 
+
+
+.logs-control {
+    margin-top: var(--spacing);
+    padding-top: var(--spacing);
+    border-top: 1px solid var(--border-color);
+}
+
+.logs-options {
+    margin-top: 15px;
+    display: grid;
+    gap: 15px;
+}
+
+.time-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.time-input {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.time-input label {
+    font-size: 0.9em;
+    color: var(--primary-color);
+}
+
+.time-input input[type="datetime-local"] {
+    padding: 5px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.time-input input[type="datetime-local"]:disabled {
+    background-color: #f5f5f5;
+    cursor: not-allowed;
+}
+
+.follow-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.follow-control label {
+    font-size: 0.9em;
+    color: var(--primary-color);
+    cursor: pointer;
+}
+
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .container {

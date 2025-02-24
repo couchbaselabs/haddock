@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
 
 	"cod/debug"
 	"cod/events"
@@ -132,6 +133,9 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 			Clusters  []string `json:"clusters,omitempty"`
 			Enabled   bool     `json:"enabled,omitempty"`
 			SessionID string   `json:"sessionId,omitempty"`
+			StartTime string   `json:"startTime,omitempty"`
+			EndTime   string   `json:"endTime,omitempty"`
+			Follow    bool     `json:"follow,omitempty"`
 		}
 		if err := json.Unmarshal(message, &request); err != nil {
 			log.Printf("Error unmarshalling message: %v", err)
@@ -150,9 +154,30 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 		case "logs":
 			client.watchLogs = request.Enabled
 			client.logSessionId = request.SessionID
-			debug.Println("watchLogs", client.watchLogs)
-			if client.watchLogs {
-				s.startLogWatcher()
+
+			if request.Enabled {
+				var startTime *time.Time
+				var endTime *time.Time
+
+				// Handle start time
+				if request.StartTime != "" {
+					t, err := time.Parse(time.RFC3339, request.StartTime)
+					if err == nil {
+						startTime = &t
+					}
+				}
+
+				// Handle end time only if not following
+				if !request.Follow && request.EndTime != "" {
+					t, err := time.Parse(time.RFC3339, request.EndTime)
+					if err == nil {
+						endTime = &t
+					}
+				}
+
+				// Start the log watcher with appropriate parameters
+				debug.Println("Starting log watcher with startTime", startTime, "and endTime", endTime, "and follow", request.Follow)
+				s.startLogWatcher(startTime, endTime, request.Follow)
 			} else {
 				s.checkAndStopLogWatcher()
 			}
@@ -194,7 +219,7 @@ func (s *Server) cleanupEventWatchers() {
 	}
 }
 
-func (s *Server) startLogWatcher() {
+func (s *Server) startLogWatcher(startTime, endTime *time.Time, follow bool) {
 	s.logMutex.Lock()
 	defer s.logMutex.Unlock()
 
@@ -204,7 +229,7 @@ func (s *Server) startLogWatcher() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	s.logWatcher = cancel
-	go logs.StartLogWatcher(ctx, s.clientset, s.broadcast)
+	go logs.StartLogWatcher(ctx, s.clientset, s.broadcast, startTime, endTime, follow)
 }
 
 func (s *Server) checkAndStopLogWatcher() {
@@ -238,7 +263,7 @@ func (s *Server) handleMessages() {
 			shouldSend := false
 			if msg.Type == "log" {
 				shouldSend = client.watchLogs
-				debug.Println("shouldSend", shouldSend)
+				//debug.Println("shouldSend", shouldSend)
 				msg.SessionID = client.logSessionId
 			} else {
 				shouldSend = client.watchEventslist[msg.ClusterName]

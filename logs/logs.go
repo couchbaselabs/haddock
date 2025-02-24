@@ -3,9 +3,11 @@ package logs
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"io"
 	"log"
 	"os"
+	"time"
 
 	"cod/utils"
 
@@ -14,7 +16,12 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-func StartLogWatcher(ctx context.Context, clientset *kubernetes.Clientset, broadcast chan<- utils.Message) {
+// LogTimestamp only extracts the timestamp from the log entry
+type LogTimestamp struct {
+	Time time.Time `json:"ts"`
+}
+
+func StartLogWatcher(ctx context.Context, clientset *kubernetes.Clientset, broadcast chan<- utils.Message, startTime, endTime *time.Time, follow bool) {
 	namespace := os.Getenv("WATCH_NAMESPACE")
 	if namespace == "" {
 		log.Fatalf("WATCH_NAMESPACE environment variable not set")
@@ -34,11 +41,18 @@ func StartLogWatcher(ctx context.Context, clientset *kubernetes.Clientset, broad
 	}
 
 	podName := pods.Items[0].Name
-	req := clientset.CoreV1().Pods(namespace).GetLogs(podName, &v1.PodLogOptions{
-		Container: "couchbase-operator",
-		Follow:    true,
-	})
 
+	logOptions := &v1.PodLogOptions{
+		Container: "couchbase-operator",
+		Follow:    follow,
+	}
+
+	if startTime != nil {
+		sinceTime := metav1.NewTime(*startTime)
+		logOptions.SinceTime = &sinceTime
+	}
+
+	req := clientset.CoreV1().Pods(namespace).GetLogs(podName, logOptions)
 	stream, err := req.Stream(ctx)
 	if err != nil {
 		log.Printf("Error getting log stream: %v", err)
@@ -58,6 +72,20 @@ func StartLogWatcher(ctx context.Context, clientset *kubernetes.Clientset, broad
 					log.Printf("Error reading log line: %v", err)
 				}
 				return
+			}
+
+			// Parse just the timestamp
+			var logTime LogTimestamp
+			if err := json.Unmarshal([]byte(line), &logTime); err != nil {
+				log.Printf("Error parsing log timestamp: %v", err)
+				continue
+			}
+
+			// Check end time if specified and not following
+			if endTime != nil && !follow {
+				if logTime.Time.After(*endTime) {
+					return
+				}
 			}
 
 			select {
