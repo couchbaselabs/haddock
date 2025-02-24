@@ -1,47 +1,77 @@
 const socket = new WebSocket("ws://" + window.location.host + "/ws");
+let currentLogSessionId = null;
 
-document.getElementById('fetchEventsButton').addEventListener('click', fetchEvents);
 
-function fetchEvents() {
+document.addEventListener('DOMContentLoaded', () => {
+    const clusterCheckboxes = document.querySelectorAll('.cluster-checkbox');
+    const logsCheckbox = document.getElementById('logsCheckbox');
+
+    clusterCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', handleClusterSelection);
+    });
+
+    logsCheckbox.addEventListener('change', handleLogsSelection);
+});
+
+function handleClusterSelection() {
     const selectedClusters = Array.from(document.querySelectorAll('.cluster-checkbox:checked')).map(cb => cb.value);
-    if (selectedClusters.length === 0) {
-        alert("Please select at least one cluster");
-        return;
-    }
-
+    
     // Remove event divs for unselected clusters
     const eventsContainer = document.getElementById("eventsContainer");
-    if (!eventsContainer) {
-        console.error("Events container not found!");
-        return;
-    }
-
     const clusterDivs = eventsContainer.getElementsByClassName('cluster-events');
-    //console.log("Found cluster divs:", clusterDivs.length);  // Debug line
     
     Array.from(clusterDivs).forEach(div => {
         const clusterName = div.id.replace('events-', '');
-        console.log("Checking cluster:", clusterName, "Selected:", selectedClusters.includes(clusterName));
         if (!selectedClusters.includes(clusterName)) {
             div.remove();
         }
     });
 
-    const message = JSON.stringify({ clusters: selectedClusters });
-    //console.log(message);
-    socket.send(message);
+    socket.send(JSON.stringify({
+        type: "clusters",
+        clusters: selectedClusters
+    }));
 }
 
+function generateSessionId() {
+    return Date.now().toString() + Math.random().toString(36).substr(2, 9);
+}
+
+function handleLogsSelection(event) {
+    const logsContainer = document.getElementById('logsContainer');
+    logsContainer.innerHTML = '';
     
+    if (event.target.checked) {
+        currentLogSessionId = generateSessionId();
+    } else {
+        currentLogSessionId = null;
+    }
+    
+    socket.send(JSON.stringify({
+        type: "logs",
+        enabled: event.target.checked,
+        sessionId: currentLogSessionId
+    }));
+}
 
 socket.onmessage = function(event) {
-    const eventData = JSON.parse(event.data);
-    if (eventData.type === "clusters") {
-        updateClusters(eventData.clusters);
-    } else {
-        updateEvents(eventData);
+    const data = JSON.parse(event.data);
+    switch (data.type) {
+        case "clusters":
+            updateClusters(data.clusters);
+            break;
+        case "event":
+            updateEvents(data);
+            break;
+        case "log":
+            //const logsCheckbox = document.getElementById('logsCheckbox');
+            if (data.sessionId === currentLogSessionId) {
+                updateLogs(data);
+            }
+            break;
     }
 };
+
 
 function updateClusters(clusters) {
     const container = document.getElementById("clustersContainer");
@@ -93,4 +123,13 @@ function updateEvents(eventData) {
     `;
     eventsContent.appendChild(eventElement);
     eventsContent.scrollTop = eventsContent.scrollHeight;
+}
+
+function updateLogs(logData) {
+    const logsContainer = document.getElementById('logsContainer');
+    const logEntry = document.createElement('div');
+    logEntry.className = 'log-entry';
+    logEntry.textContent = logData.message;
+    logsContainer.appendChild(logEntry);
+    logsContainer.scrollTop = logsContainer.scrollHeight;
 }

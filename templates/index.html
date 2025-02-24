@@ -3,31 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cluster Events</title>
+    <title>Couchbase Operator Dashboard</title>
     <link rel="stylesheet" href="/static/css/styles.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Kubernetes Cluster Events Monitor</h1>
+            <h1>Couchbase Operator Dashboard</h1>
         </header>
         
         <div class="main-content">
-            <div class="clusters-section">
-                <h2>Select Clusters</h2>
-                <div id="clustersContainer" class="clusters-grid">
-                    {{range .}}
-                    <label id="cluster-{{.}}" class="cluster-label">
-                        <input type="checkbox" class="cluster-checkbox" value="{{.}}">
-                        <span class="cluster-name">{{.}}</span>
-                    </label>
-                    {{end}}
+            <div class="control-section">
+                <div class="clusters-section">
+                    <h2>Select Clusters</h2>
+                    <div id="clustersContainer" class="clusters-grid">
+                        {{range .}}
+                        <label id="cluster-{{.}}" class="cluster-label">
+                            <input type="checkbox" class="cluster-checkbox" value="{{.}}">
+                            <span class="cluster-name">{{.}}</span>
+                        </label>
+                        {{end}}
+                    </div>
                 </div>
-                <button id="fetchEventsButton" class="fetch-button">Fetch Events</button>
+                
+                <div class="logs-control">
+                    <label class="logs-label">
+                        <input type="checkbox" id="logsCheckbox">
+                        <span>Show Operator Logs</span>
+                    </label>
+                </div>
             </div>
 
-            <div id="eventsContainer" class="events-section">
-                <!-- Events will be displayed here -->
+            <div class="display-section">
+                <div id="eventsContainer" class="events-section">
+                    <!-- Events will be displayed here -->
+                </div>
+                <div id="logsContainer" class="logs-section">
+                    <!-- Logs will be displayed here -->
+                </div>
             </div>
         </div>
     </div>
