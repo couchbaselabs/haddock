@@ -157,10 +157,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateLogs(logData) {
         const logsContainer = document.getElementById('logsContainer');
         const logEntry = document.createElement('div');
+        const scrollTop = logsContainer.scrollTop;
+        console.log("scrollTop", scrollTop);
         logEntry.className = 'log-entry';
         logEntry.textContent = logData.message;
         logsContainer.appendChild(logEntry);
-        logsContainer.scrollTop = logsContainer.scrollHeight;
+        logsContainer.scrollTop = scrollTop;
     }
 
     socket.onmessage = function(event) {
