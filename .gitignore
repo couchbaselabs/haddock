@@ -1,3 +1,5 @@
 .devbox/
 coa/
 devbox.lock
+dashboard
+cluster-setup/ymls/
