@@ -3,3 +3,4 @@ coa/
 devbox.lock
 dashboard
 cluster-setup/ymls/
+.DS_Store

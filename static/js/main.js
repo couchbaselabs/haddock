@@ -28,6 +28,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
+
+    autoScrollCheckbox.addEventListener('change', function() {
+        if (this.checked) {
+            logsContainerData.scrollTop = logsContainerData.scrollHeight;
+        }
+    });
    
 
     // Event listeners
@@ -152,13 +158,52 @@ document.addEventListener('DOMContentLoaded', () => {
             clusterDiv.id = `events-${eventData.clusterName}`;
             clusterDiv.className = 'cluster-events';
             clusterDiv.innerHTML = `
-                <h2>${eventData.clusterName}</h2>
+                <div class="cluster-header">
+                    <div class="cluster-title">
+                        <svg class="collapse-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M7 15L12 10L17 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <h2>${eventData.clusterName}</h2>
+                    </div>
+                    <label class="auto-scroll-control">
+                        <input type="checkbox" class="events-auto-scroll" checked>
+                        <span>Auto scroll</span>
+                    </label>
+                </div>
                 <div class="events-content"></div>
             `;
             document.getElementById("eventsContainerData").appendChild(clusterDiv);
+            
+            // Add scroll event listener to the new events-content
+            const eventsContent = clusterDiv.querySelector('.events-content');
+            const autoScrollCheckbox = clusterDiv.querySelector('.events-auto-scroll');
+            
+            eventsContent.addEventListener('scroll', function() {
+                // If user scrolls up (away from bottom) and auto-scroll is checked, uncheck it
+                if (autoScrollCheckbox.checked) {
+                    const isScrolledToBottom = eventsContent.scrollHeight - eventsContent.clientHeight <= eventsContent.scrollTop + 50;
+                    if (!isScrolledToBottom) {
+                        autoScrollCheckbox.checked = false;
+                    }
+                }
+            });
+            
+            // Add change event listener to immediately scroll when checked
+            autoScrollCheckbox.addEventListener('change', function() {
+                if (this.checked) {
+                    eventsContent.scrollTop = eventsContent.scrollHeight;
+                }
+            });
+            
+            // Add collapse/expand functionality
+            const clusterTitle = clusterDiv.querySelector('.cluster-title');
+            clusterTitle.addEventListener('click', function() {
+                clusterDiv.classList.toggle('collapsed');
+            });
         }
     
         const eventsContent = clusterDiv.querySelector('.events-content');
+        const autoScrollCheckbox = clusterDiv.querySelector('.events-auto-scroll');
         const eventElement = document.createElement("div");
         eventElement.className = 'event-item';
         eventElement.innerHTML = `
@@ -166,8 +211,20 @@ document.addEventListener('DOMContentLoaded', () => {
             <span class="event-property"><strong>Name:</strong> ${eventData.objectName}</span>
             <span class="event-property"><strong>Message:</strong> ${eventData.message}</span>
         `;
+        
+        // Remember scroll position if auto-scroll is not checked
+        const shouldScrollToBottom = autoScrollCheckbox.checked;
+        const scrollTop = eventsContent.scrollTop;
+        
+        // Add the event
         eventsContent.appendChild(eventElement);
-        eventsContent.scrollTop = eventsContent.scrollHeight;
+        
+        // Scroll accordingly
+        if (shouldScrollToBottom) {
+            eventsContent.scrollTop = eventsContent.scrollHeight;
+        } else {
+            eventsContent.scrollTop = scrollTop;
+        }
     }
     
     function updateLogs(logData) {
