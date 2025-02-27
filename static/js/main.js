@@ -1,17 +1,33 @@
 const socket = new WebSocket("ws://" + window.location.host + "/ws");
 let currentLogSessionId = null;
+let logFragment = document.createDocumentFragment();
+let batchTimeoutId = null;
+const BATCH_INTERVAL = 500;
 
 
 document.addEventListener('DOMContentLoaded', () => {
     const logsCheckbox = document.getElementById('logsCheckbox'); 
     const clusterCheckboxes = document.querySelectorAll('.cluster-checkbox');
     const followCheckbox = document.getElementById('followCheckbox');
+    const autoScrollCheckbox = document.getElementById('autoScrollCheckbox');
     const startTimeInput = document.getElementById('startTime');
     const endTimeInput = document.getElementById('endTime');
+    const logsContainerData = document.getElementById('logsContainerData');
 
     startTimeInput.value = '';
     endTimeInput.value = '';
     endTimeInput.disabled = followCheckbox.checked;
+   
+    // Add event listener for scroll events on logs container
+    logsContainerData.addEventListener('scroll', function() {
+        // If user scrolls up (away from bottom) and auto-scroll is checked, uncheck it
+        if (autoScrollCheckbox.checked) {
+            const isScrolledToBottom = logsContainerData.scrollHeight - logsContainerData.clientHeight <= logsContainerData.scrollTop + 50;
+            if (!isScrolledToBottom) {
+                autoScrollCheckbox.checked = false;
+            }
+        }
+    });
    
 
     // Event listeners
@@ -29,8 +45,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function handleLogsSelection(event) {
-        const logsContainer = document.getElementById('logsContainer');
-        logsContainer.innerHTML = '';
+        const logsContainerData = document.getElementById('logsContainerData');
+        logsContainerData.innerHTML = '';
         
         if (event.target.checked) {
             // Validate inputs
@@ -81,8 +97,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const selectedClusters = Array.from(document.querySelectorAll('.cluster-checkbox:checked')).map(cb => cb.value);
         
         // Remove event divs for unselected clusters
-        const eventsContainer = document.getElementById("eventsContainer");
-        const clusterDivs = eventsContainer.getElementsByClassName('cluster-events');
+        const eventsContainerData = document.getElementById("eventsContainerData");
+        const clusterDivs = eventsContainerData.getElementsByClassName('cluster-events');
         
         Array.from(clusterDivs).forEach(div => {
             const clusterName = div.id.replace('events-', '');
@@ -139,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <h2>${eventData.clusterName}</h2>
                 <div class="events-content"></div>
             `;
-            document.getElementById("eventsContainer").appendChild(clusterDiv);
+            document.getElementById("eventsContainerData").appendChild(clusterDiv);
         }
     
         const eventsContent = clusterDiv.querySelector('.events-content');
@@ -155,14 +171,43 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function updateLogs(logData) {
-        const logsContainer = document.getElementById('logsContainer');
+        // Create the log entry and add it to our fragment instead of the DOM
         const logEntry = document.createElement('div');
-        const scrollTop = logsContainer.scrollTop;
-        console.log("scrollTop", scrollTop);
         logEntry.className = 'log-entry';
         logEntry.textContent = logData.message;
-        logsContainer.appendChild(logEntry);
-        logsContainer.scrollTop = scrollTop;
+        logFragment.appendChild(logEntry);
+        
+        // If we don't have a timer running yet, start one
+        if (!batchTimeoutId) {
+            batchTimeoutId = setTimeout(flushLogBatch, BATCH_INTERVAL);
+        }
+    }
+    
+    function flushLogBatch() {
+        if (logFragment.children.length > 0) {
+            // If auto-scroll is checked, we'll always scroll to bottom after adding logs
+            const shouldScrollToBottom = autoScrollCheckbox.checked;
+            
+            // If auto-scroll is not checked, remember current scroll position to maintain it
+            const scrollTop = logsContainerData.scrollTop;
+            
+            // Append all entries at once
+            logsContainerData.appendChild(logFragment);
+            
+            if (shouldScrollToBottom) {
+                // Scroll to bottom if auto-scroll is enabled
+                logsContainerData.scrollTop = logsContainerData.scrollHeight;
+            } else {
+                // Maintain scroll position if auto-scroll is disabled
+                logsContainerData.scrollTop = scrollTop;
+            }
+            
+            // Create a new empty fragment for the next batch
+            logFragment = document.createDocumentFragment();
+        }
+        
+        // Clear the timeout
+        batchTimeoutId = null;
     }
 
     socket.onmessage = function(event) {

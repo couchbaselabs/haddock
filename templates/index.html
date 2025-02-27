@@ -51,16 +51,27 @@
                                 Follow logs
                             </label>
                         </div>
+                        
+                        <div class="auto-scroll-control">
+                            <label>
+                                <input type="checkbox" id="autoScrollCheckbox" checked>
+                                Auto scroll
+                            </label>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <div class="display-section">
-                <div id="eventsContainer" class="events-section">
-                    <!-- Events will be displayed here -->
+                <div id="eventsContainer" class="events-container">
+                    <div id="eventsContainerData" class="events-container-data">
+                        <!-- Events will be displayed here -->
+                    </div>
                 </div>
-                <div id="logsContainer" class="logs-section">
-                    <!-- Logs will be displayed here -->
+                <div id="logsContainer" class="logs-container">
+                    <div id="logsContainerData" class="logs-container-data">
+                        <!-- Logs will be displayed here -->
+                    </div>
                 </div>
             </div>
         </div>
