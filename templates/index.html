@@ -64,11 +64,21 @@
 
             <div class="display-section">
                 <div id="eventsContainer" class="events-container">
+                    <div class="search-container">
+                        <input type="text" id="eventsSearch" class="search-input" placeholder="Search events...">
+                        <button id="clearEventsSearch" class="clear-search">×</button>
+                    </div>
+                    <div id="eventsSearchResults" class="search-results-container events-search-results"></div>
                     <div id="eventsContainerData" class="events-container-data">
                         <!-- Events will be displayed here -->
                     </div>
                 </div>
                 <div id="logsContainer" class="logs-container">
+                    <div class="search-container">
+                        <input type="text" id="logsSearch" class="search-input" placeholder="Search logs...">
+                        <button id="clearLogsSearch" class="clear-search">×</button>
+                    </div>
+                    <div id="logsSearchResults" class="search-results-container logs-search-results"></div>
                     <div id="logsContainerData" class="logs-container-data">
                         <!-- Logs will be displayed here -->
                     </div>
@@ -76,6 +86,7 @@
             </div>
         </div>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.1.0"></script>
     <script src="/static/js/main.js"></script>
 </body>
 </html>
