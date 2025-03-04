@@ -4,12 +4,17 @@ let currentLogSessionId = null;
 let logFragment = document.createDocumentFragment();
 let batchTimeoutId = null;
 const BATCH_INTERVAL = 500;
+const SEARCH_DEBOUNCE_DELAY = 300; // Delay in ms for search debounce
 
 // Search data storage
 let eventsData = [];
 let logsData = [];
 let eventsFuse = null;
 let logsFuse = null;
+
+// Search functionality
+let eventsSearchTimeout = null;
+let logsSearchTimeout = null;
 
 // ==================== DOCUMENT READY EVENT =======================
 document.addEventListener('DOMContentLoaded', () => {
@@ -82,26 +87,50 @@ function initializeSearchFunctionality() {
     // Initialize Fuse.js instances
     initializeFuse();
     
-    // Add event listeners for events search
-    eventsSearch.addEventListener('input', () => {
+    // Add event listeners for events search with debouncing
+    eventsSearch.addEventListener('keydown', () => {
         const query = eventsSearch.value.trim();
+        
+        // Clear any previous timeout
+        if (eventsSearchTimeout) {
+            clearTimeout(eventsSearchTimeout);
+        }
+        
         if (query) {
-            searchEvents(query);
+            // Show the search results container with loading indicator
             eventsContainerData.classList.add('hidden');
             eventsSearchResults.classList.add('active');
+            eventsSearchResults.innerHTML = '<div class="search-loading">Searching...</div>';
+            
+            // Set a new timeout
+            eventsSearchTimeout = setTimeout(() => {
+                searchEvents(query);
+            }, SEARCH_DEBOUNCE_DELAY);
         } else {
             eventsContainerData.classList.remove('hidden');
             eventsSearchResults.classList.remove('active');
         }
     });
     
-    // Add event listeners for logs search
-    logsSearch.addEventListener('input', () => {
+    // Add event listeners for logs search with debouncing
+    logsSearch.addEventListener('keydown', () => {
         const query = logsSearch.value.trim();
+        
+        // Clear any previous timeout
+        if (logsSearchTimeout) {
+            clearTimeout(logsSearchTimeout);
+        }
+        
         if (query) {
-            searchLogs(query);
+            // Show the search results container with loading indicator
             logsContainerData.classList.add('hidden');
             logsSearchResults.classList.add('active');
+            logsSearchResults.innerHTML = '<div class="search-loading">Searching...</div>';
+            
+            // Set a new timeout
+            logsSearchTimeout = setTimeout(() => {
+                searchLogs(query);
+            }, SEARCH_DEBOUNCE_DELAY);
         } else {
             logsContainerData.classList.remove('hidden');
             logsSearchResults.classList.remove('active');
@@ -124,22 +153,23 @@ function initializeSearchFunctionality() {
 
 function initializeFuse() {
     const eventsOptions = {
-        threshold: 0.3,
+        threshold: 0.2,
         ignoreLocation: true,
         includeMatches: true,
-        minMatchCharLength: 2,
+        minMatchCharLength: 3,
         keys: ['clusterName', 'kind', 'objectName', 'message']
     };
 
     const logsOptions = {
-        threshold: 0.3,
+        threshold: 0.2,
         ignoreLocation: true,
         includeMatches: true,
-        minMatchCharLength: 2,
+        minMatchCharLength: 3,
     };
 
-    eventsFuse = new Fuse(eventsData, eventsOptions);
-    logsFuse = new Fuse(logsData, logsOptions);
+    // Initialize with empty collections
+    eventsFuse = new Fuse([], eventsOptions);
+    logsFuse = new Fuse([], logsOptions);
 }
 
 // ==================== EVENT HANDLERS ====================
@@ -187,8 +217,8 @@ function handleLogsSelection(event) {
         socket.send(JSON.stringify(request));
     } else {
         currentLogSessionId = null;
-        logsData = []; // Clear logs data array
-        if (logsFuse) logsFuse.setCollection(logsData); // Reset Fuse collection
+        // Reset Fuse collection
+        if (logsFuse) logsFuse = new Fuse([], logsFuse.options);
         logsContainerData.innerHTML = ''; // Clear logs container visually
         socket.send(JSON.stringify({
             type: "logs",
@@ -359,15 +389,14 @@ function updateClusters(clusters) {
 }
 
 function updateEvents(eventData) {
-    // Store event data for search
-    eventsData.push(eventData);
+    // Add the event data directly to Fuse index
     if (eventsFuse) {
-        eventsFuse.setCollection(eventsData);
+        eventsFuse.add(eventData);
     }
     
     // Check if search is active and update search results
     const eventsSearch = document.getElementById('eventsSearch');
-    if (eventsSearch && eventsSearch.value.trim()) {
+    if (eventsSearch && eventsSearch.value.trim() && !eventsSearchTimeout) {
         searchEvents(eventsSearch.value.trim());
     }
     
@@ -445,16 +474,16 @@ function updateEvents(eventData) {
         eventsContent.scrollTop = scrollTop;
     }
 }
+
 function updateLogs(logData) {
-    // Store log data for search - logData already has the message field from the server
-    logsData.push(logData.message);
+    // Add the log message directly to Fuse index
     if (logsFuse) {
-        logsFuse.setCollection(logsData);
+        logsFuse.add(logData.message);
     }
     
     // Check if search is active and update search results
     const logsSearch = document.getElementById('logsSearch');
-    if (logsSearch && logsSearch.value.trim()) {
+    if (logsSearch && logsSearch.value.trim() && !logsSearchTimeout) {
         searchLogs(logsSearch.value.trim());
     }
     
@@ -521,14 +550,4 @@ function highlightMatches(text, matches) {
     }
     
     return result;
-}
-
-function debounce(func, delay) {
-    let timer;
-    return function(...args) {
-        clearTimeout(timer);
-        timer = setTimeout(() => {
-            func.apply(this, args);
-        }, delay);
-    };
 }
