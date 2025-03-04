@@ -349,8 +349,16 @@
   
   .log-entry {
     padding: var(--spacing-xs) 0;
-    border-bottom: 1px solid #eee;
+    border-bottom: 1px solid #5b5959;
+    overflow-wrap: break-word;
     line-height: 1.4;
+  }
+
+  .log-entry:hover, .event-item:hover {
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
+    transform: translateY(-2px);
+    border-left-width: 5px;
+    transition: all 0.2s ease;
   }
   
   /* Form Controls */
@@ -368,6 +376,13 @@
     padding: var(--spacing-sm);
     background-color: var(--background-light);
     border-bottom: 1px solid var(--border-color);
+  }
+
+  .search-loading {
+    text-align: center;
+    padding: 20px;
+    color: var(--medium-text);
+    font-style: italic;
   }
   
   .search-input {
@@ -438,6 +453,36 @@
     text-align: center;
     font-style: italic;
   }
+
+/* Match highlighting */
+.match-highlight {
+    background-color: rgba(255, 235, 59, 0.5); /* Yellow with transparency */
+    border-radius: 2px;
+    padding: 0 1px;
+    font-weight: 500; 
+    box-shadow: 0 0 0 1px rgba(255, 235, 59, 0.7); /* Creates a subtle border */
+  }
+  
+  /* Ensure highlighted text in logs maintains monospace formatting */
+  .search-result-log .match-highlight {
+    font-family: monospace;
+  }
+  
+  /* Hover effect on search results */
+  .search-result-item:hover {
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+    transition: all 0.2s ease;
+  }
+  
+  /* Make search input more prominent when focused */
+  .search-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.2);
+  }
+
+
   
   /* Responsive adjustments */
   @media (min-width: 1024px) {

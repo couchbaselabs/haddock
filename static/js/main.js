@@ -127,6 +127,7 @@ function initializeFuse() {
         threshold: 0.3,
         ignoreLocation: true,
         includeMatches: true,
+        minMatchCharLength: 2,
         keys: ['clusterName', 'kind', 'objectName', 'message']
     };
 
@@ -134,6 +135,7 @@ function initializeFuse() {
         threshold: 0.3,
         ignoreLocation: true,
         includeMatches: true,
+        minMatchCharLength: 2,
     };
 
     eventsFuse = new Fuse(eventsData, eventsOptions);
@@ -143,6 +145,7 @@ function initializeFuse() {
 // ==================== EVENT HANDLERS ====================
 function handleLogsSelection(event) {
     const logsContainerData = document.getElementById('logsContainerData');
+    logFragment = document.createDocumentFragment();
     logsContainerData.innerHTML = '';
 
     if (event.target.checked) {
@@ -243,22 +246,47 @@ function searchEvents(query) {
         return;
     }
     
+    const fragment = document.createDocumentFragment();
     results.forEach(result => {
         const event = result.item;
         const resultDiv = document.createElement('div');
         resultDiv.className = 'search-result-item search-result-event';
         
+        // Process matches for each field
+        let clusterHighlighted = event.clusterName || '';
+        let kindHighlighted = event.kind || '';
+        let nameHighlighted = event.objectName || '';
+        let messageHighlighted = event.message || '';
+        
+        if (result.matches && result.matches.length > 0) {
+            // Process each match by field
+            result.matches.forEach(match => {
+                if (match.key === 'clusterName' && match.indices.length > 0) {
+                    clusterHighlighted = highlightMatches(clusterHighlighted, match.indices);
+                }
+                else if (match.key === 'kind' && match.indices.length > 0) {
+                    kindHighlighted = highlightMatches(kindHighlighted, match.indices);
+                }
+                else if (match.key === 'objectName' && match.indices.length > 0) {
+                    nameHighlighted = highlightMatches(nameHighlighted, match.indices);
+                }
+                else if (match.key === 'message' && match.indices.length > 0) {
+                    messageHighlighted = highlightMatches(messageHighlighted, match.indices);
+                }
+            });
+        }
+        
         resultDiv.innerHTML = `
-            <div class="search-result-cluster">Cluster: ${event.clusterName}</div>
-            <span class="event-property"><strong>Kind:</strong> ${event.kind}</span>
-            <span class="event-property"><strong>Name:</strong> ${event.objectName}</span>
-            <span class="event-property"><strong>Message:</strong> ${event.message}</span>
+            <div class="search-result-cluster">Cluster: ${clusterHighlighted}</div>
+            <span class="event-property"><strong>Kind:</strong> ${kindHighlighted}</span>
+            <span class="event-property"><strong>Name:</strong> ${nameHighlighted}</span>
+            <span class="event-property"><strong>Message:</strong> ${messageHighlighted}</span>
         `;
         
-        eventsSearchResults.appendChild(resultDiv);
+        fragment.appendChild(resultDiv);
     });
     
-    // Auto-scroll to top of results
+    eventsSearchResults.appendChild(fragment);
     eventsSearchResults.scrollTop = 0;
 }
 
@@ -271,16 +299,30 @@ function searchLogs(query) {
         logsSearchResults.innerHTML = '<div class="no-results">No matching logs found</div>';
         return;
     }
+
+    const fragment = document.createDocumentFragment();
     
     results.forEach(result => {
-        const log = result.item;
+        const logMessage = result.item; // This is now directly the string
         const resultDiv = document.createElement('div');
         resultDiv.className = 'search-result-item search-result-log';
-        resultDiv.textContent = log;
-        logsSearchResults.appendChild(resultDiv);
+        
+        // Extract matches - they're now directly on the string, not a field
+        let highlightedText = logMessage;
+        if (result.matches && result.matches.length > 0) {
+            // For string items, the matches apply directly to the item
+            const match = result.matches[0]; // Should only be one match object
+            if (match && match.indices.length > 0) {
+                highlightedText = highlightMatches(logMessage, match.indices);
+            }
+        }
+        
+        // Use innerHTML to render the highlights
+        resultDiv.innerHTML = highlightedText;
+        
+        fragment.appendChild(resultDiv);
     });
-    
-    // Auto-scroll to top of results
+    logsSearchResults.appendChild(fragment);
     logsSearchResults.scrollTop = 0;
 }
 
@@ -463,3 +505,30 @@ function generateSessionId() {
     return Date.now().toString() + Math.random().toString(36).substr(2, 9);
 }
 
+function highlightMatches(text, matches) {
+    if (!matches || !text) return text;
+    
+    // Sort matches by indices from end to beginning
+    const sortedMatches = [...matches].sort((a, b) => b[0] - a[0]);
+    
+    let result = text;
+    
+    // Process each match from end to beginning
+    for (const [start, end] of sortedMatches) {
+        const matchedText = result.substring(start, end + 1);
+        const highlighted = `<span class="match-highlight">${matchedText}</span>`;
+        result = result.substring(0, start) + highlighted + result.substring(end + 1);
+    }
+    
+    return result;
+}
+
+function debounce(func, delay) {
+    let timer;
+    return function(...args) {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+            func.apply(this, args);
+        }, delay);
+    };
+}
