@@ -531,7 +531,7 @@ function flushLogBatch() {
 
 // ==================== UTILITY FUNCTIONS ====================
 function generateSessionId() {
-    return Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    return Date.now().toString() + window.crypto.getRandomValues(new Uint32Array(1))[0];
 }
 
 function highlightMatches(text, matches) {
