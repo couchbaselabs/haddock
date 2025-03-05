@@ -3,34 +3,90 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cluster Events</title>
+    <title>Couchbase Operator Dashboard</title>
     <link rel="stylesheet" href="/static/css/styles.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Kubernetes Cluster Events Monitor</h1>
+            <h1>Couchbase Operator Dashboard</h1>
         </header>
         
         <div class="main-content">
-            <div class="clusters-section">
-                <h2>Select Clusters</h2>
-                <div id="clustersContainer" class="clusters-grid">
-                    {{range .}}
-                    <label id="cluster-{{.}}" class="cluster-label">
-                        <input type="checkbox" class="cluster-checkbox" value="{{.}}">
-                        <span class="cluster-name">{{.}}</span>
-                    </label>
-                    {{end}}
+            <div class="control-section">
+                <div class="clusters-section">
+                    <h2>Select Clusters</h2>
+                    <div id="clustersContainer" class="clusters-grid">
+                        {{range .}}
+                        <label id="cluster-{{.}}" class="cluster-label">
+                            <input type="checkbox" class="cluster-checkbox" value="{{.}}">
+                            <span class="cluster-name">{{.}}</span>
+                        </label>
+                        {{end}}
+                    </div>
                 </div>
-                <button id="fetchEventsButton" class="fetch-button">Fetch Events</button>
+                
+                <div class="logs-control">
+                    <label class="logs-label">
+                        <input type="checkbox" id="logsCheckbox">
+                        <span>Show Operator Logs</span>
+                    </label>
+                    
+                    <div class="logs-options">
+                        <div class="time-control">
+                            <div class="time-input">
+                                <label for="startTime">Start Time</label>
+                                <input type="datetime-local" id="startTime">
+                            </div>
+                            
+                            <div class="time-input">
+                                <label for="endTime">End Time</label>
+                                <input type="datetime-local" id="endTime">
+                            </div>
+                        </div>
+                        
+                        <div class="follow-control">
+                            <label>
+                                <input type="checkbox" id="followCheckbox" >
+                                Follow logs
+                            </label>
+                        </div>
+                        
+                        <div class="auto-scroll-control">
+                            <label>
+                                <input type="checkbox" id="autoScrollCheckbox" checked>
+                                Auto scroll
+                            </label>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div id="eventsContainer" class="events-section">
-                <!-- Events will be displayed here -->
+            <div class="display-section">
+                <div id="eventsContainer" class="events-container">
+                    <div class="search-container">
+                        <input type="text" id="eventsSearch" class="search-input" placeholder="Search events...">
+                        <button id="clearEventsSearch" class="clear-search">×</button>
+                    </div>
+                    <div id="eventsSearchResults" class="search-results-container events-search-results"></div>
+                    <div id="eventsContainerData" class="events-container-data">
+                        <!-- Events will be displayed here -->
+                    </div>
+                </div>
+                <div id="logsContainer" class="logs-container">
+                    <div class="search-container">
+                        <input type="text" id="logsSearch" class="search-input" placeholder="Search logs...">
+                        <button id="clearLogsSearch" class="clear-search">×</button>
+                    </div>
+                    <div id="logsSearchResults" class="search-results-container logs-search-results"></div>
+                    <div id="logsContainerData" class="logs-container-data">
+                        <!-- Logs will be displayed here -->
+                    </div>
+                </div>
             </div>
         </div>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.1.0"></script>
     <script src="/static/js/main.js"></script>
 </body>
 </html>
