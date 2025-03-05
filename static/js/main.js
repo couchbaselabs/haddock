@@ -3,7 +3,10 @@ const socket = new WebSocket("ws://" + window.location.host + "/ws");
 let currentLogSessionId = null;
 let logFragment = document.createDocumentFragment();
 let batchTimeoutId = null;
-const BATCH_INTERVAL = 500;
+let eventFragments = {}; // Map to store event fragments by cluster name
+let eventBatchTimeoutId = null;
+const LOG_BATCH_INTERVAL = 500; // For logs
+const EVENT_BATCH_INTERVAL = 10; // Faster interval for events
 const SEARCH_DEBOUNCE_DELAY = 300; // Delay in ms for search debounce
 
 // Search data storage
@@ -449,9 +452,7 @@ function updateEvents(eventData) {
         });
     }
 
-    // Add the event to the UI
-    const eventsContent = clusterDiv.querySelector('.events-content');
-    const autoScrollCheckbox = clusterDiv.querySelector('.events-auto-scroll');
+    // Create an event element
     const eventElement = document.createElement("div");
     eventElement.className = 'event-item';
     eventElement.innerHTML = `
@@ -460,18 +461,17 @@ function updateEvents(eventData) {
         <span class="event-property"><strong>Message:</strong> ${eventData.message}</span>
     `;
     
-    // Remember scroll position if auto-scroll is not checked
-    const shouldScrollToBottom = autoScrollCheckbox.checked;
-    const scrollTop = eventsContent.scrollTop;
+    // Initialize fragment for this cluster if it doesn't exist
+    if (!eventFragments[eventData.clusterName]) {
+        eventFragments[eventData.clusterName] = document.createDocumentFragment();
+    }
     
-    // Add the event
-    eventsContent.appendChild(eventElement);
+    // Add the event to the fragment
+    eventFragments[eventData.clusterName].appendChild(eventElement);
     
-    // Scroll accordingly
-    if (shouldScrollToBottom) {
-        eventsContent.scrollTop = eventsContent.scrollHeight;
-    } else {
-        eventsContent.scrollTop = scrollTop;
+    // If we don't have a timer running yet, start one
+    if (!eventBatchTimeoutId) {
+        eventBatchTimeoutId = setTimeout(flushEventBatches, EVENT_BATCH_INTERVAL);
     }
 }
 
@@ -495,7 +495,7 @@ function updateLogs(logData) {
     
     // If we don't have a timer running yet, start one
     if (!batchTimeoutId) {
-        batchTimeoutId = setTimeout(flushLogBatch, BATCH_INTERVAL);
+        batchTimeoutId = setTimeout(flushLogBatch, LOG_BATCH_INTERVAL);
     }
 }
 
@@ -527,6 +527,43 @@ function flushLogBatch() {
     
     // Clear the timeout
     batchTimeoutId = null;
+}
+
+// Function to flush all event batches
+function flushEventBatches() {
+    // Process each cluster's event fragment
+    for (const clusterName in eventFragments) {
+        if (eventFragments[clusterName].children.length > 0) {
+            const clusterDiv = document.getElementById(`events-${clusterName}`);
+            if (clusterDiv) {
+                const eventsContent = clusterDiv.querySelector('.events-content');
+                const autoScrollCheckbox = clusterDiv.querySelector('.events-auto-scroll');
+                
+                // If auto-scroll is checked, we'll always scroll to bottom after adding events
+                const shouldScrollToBottom = autoScrollCheckbox.checked;
+                
+                // If auto-scroll is not checked, remember current scroll position to maintain it
+                const scrollTop = eventsContent.scrollTop;
+                
+                // Append all entries at once
+                eventsContent.appendChild(eventFragments[clusterName]);
+                
+                if (shouldScrollToBottom) {
+                    // Scroll to bottom if auto-scroll is enabled
+                    eventsContent.scrollTop = eventsContent.scrollHeight;
+                } else {
+                    // Maintain scroll position if auto-scroll is disabled
+                    eventsContent.scrollTop = scrollTop;
+                }
+                
+                // Create a new empty fragment for the next batch
+                eventFragments[clusterName] = document.createDocumentFragment();
+            }
+        }
+    }
+    
+    // Clear the timeout
+    eventBatchTimeoutId = null;
 }
 
 // ==================== UTILITY FUNCTIONS ====================
