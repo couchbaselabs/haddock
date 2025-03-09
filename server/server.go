@@ -15,15 +15,18 @@ import (
 	"sync"
 	"time"
 
+	"cod/cluster"
 	"cod/debug"
 	"cod/events"
 	"cod/logs"
 	"cod/utils"
 
 	"github.com/gorilla/websocket"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 )
 
 type Client struct {
@@ -35,6 +38,7 @@ type Client struct {
 
 type Server struct {
 	clusters           []string
+	clusterConditions  map[string][]map[string]interface{}
 	upgrader           websocket.Upgrader
 	clients            map[*Client]bool
 	eventWatchers      map[string]context.CancelFunc
@@ -49,10 +53,11 @@ type Server struct {
 
 func NewServer() *Server {
 	return &Server{
-		upgrader:      websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024},
-		clients:       make(map[*Client]bool),
-		eventWatchers: make(map[string]context.CancelFunc),
-		broadcast:     make(chan utils.Message),
+		upgrader:          websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024},
+		clients:           make(map[*Client]bool),
+		eventWatchers:     make(map[string]context.CancelFunc),
+		broadcast:         make(chan utils.Message),
+		clusterConditions: make(map[string][]map[string]interface{}),
 	}
 }
 
@@ -80,7 +85,8 @@ func (s *Server) Start() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go utils.StartClusterWatcher(ctx, s.dynamicClient, s.updateClusters)
+	// Start the cluster watcher with separate add and delete functions
+	go cluster.StartClusterWatcher(ctx, s.dynamicClient, s.addCluster, s.deleteCluster, s.updateConditions)
 
 	fs := http.FileServer(http.Dir("static"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
@@ -95,6 +101,43 @@ func (s *Server) Start() {
 		// Otherwise serve the dashboard
 		tmpl, _ := template.ParseFiles("templates/index.html")
 		tmpl.Execute(w, s.clusters)
+	})
+
+	// Add a handler for cluster-specific pages
+	http.HandleFunc("/cluster/", func(w http.ResponseWriter, r *http.Request) {
+		// Extract the cluster name from the URL path
+		pathParts := strings.Split(r.URL.Path, "/")
+		if len(pathParts) < 3 {
+			http.NotFound(w, r)
+			return
+		}
+
+		clusterName := pathParts[2]
+
+		// For now, this is a blank page as per requirements
+		// Later it could be extended to show detailed cluster information
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(fmt.Sprintf(`
+		<!DOCTYPE html>
+		<html>
+		<head>
+			<title>Cluster: %s</title>
+			<link rel="stylesheet" href="/static/css/styles.css">
+		</head>
+		<body>
+			<div class="container">
+				<header>
+					<h1>Cluster: %s</h1>
+					<a href="/" class="back-link">← Back to Dashboard</a>
+				</header>
+				<div class="cluster-details">
+					<!-- This page is blank for now as per requirements -->
+					<!-- Future implementation will show detailed cluster information -->
+				</div>
+			</div>
+		</body>
+		</html>
+		`, clusterName, clusterName)))
 	})
 
 	http.HandleFunc("/ws", s.handleConnections)
@@ -421,27 +464,174 @@ func (s *Server) handleMessages() {
 	}
 }
 
-func (s *Server) updateClusters() {
-	namespace := os.Getenv("WATCH_NAMESPACE")
-	newClusters, err := utils.GetCouchbaseClusters(s.dynamicClient, namespace)
-	if err != nil {
-		log.Printf("Error updating Couchbase clusters: %v", err)
+// Function to handle adding a new cluster
+func (s *Server) addCluster(obj interface{}) {
+	debug.Println("addCluster called with object")
+
+	if obj == nil {
+		debug.Println("Warning: Received nil object in addCluster")
 		return
 	}
-	s.clusters = newClusters
 
-	// Broadcast the new list of clusters to all connected clients
+	unstructuredObj, ok := obj.(*unstructured.Unstructured)
+	if !ok {
+		debug.Println("Object is not an Unstructured type in addCluster")
+		return
+	}
+
+	clusterName := unstructuredObj.GetName()
+	debug.Println("Processing cluster addition:", clusterName)
+
+	// Only add if not being deleted
+	if unstructuredObj.GetDeletionTimestamp() != nil {
+		debug.Println("Skipping add for cluster with deletion timestamp:", clusterName)
+		return
+	}
+
+	// Add the cluster if it doesn't exist
+	exists := false
+	for _, name := range s.clusters {
+		if name == clusterName {
+			exists = true
+			break
+		}
+	}
+
+	if !exists {
+		s.clusters = append(s.clusters, clusterName)
+		debug.Println("Added new cluster to list:", clusterName)
+		s.broadcastClusters()
+	} else {
+		debug.Println("Cluster already in list:", clusterName)
+	}
+}
+
+// Function to handle deleting a cluster
+func (s *Server) deleteCluster(obj interface{}) {
+	debug.Println("deleteCluster called with object")
+
+	if obj == nil {
+		debug.Println("Warning: Received nil object in deleteCluster")
+		return
+	}
+
+	var clusterName string
+
+	// Handle the DeletedFinalStateUnknown case first
+	if tombstone, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+		debug.Println("Received tombstone object in deleteCluster")
+		if unstructuredObj, ok := tombstone.Obj.(*unstructured.Unstructured); ok {
+			clusterName = unstructuredObj.GetName()
+			debug.Println("Extracted cluster name from tombstone:", clusterName)
+		} else {
+			debug.Println("Tombstone contains unknown object type")
+			return
+		}
+	} else if unstructuredObj, ok := obj.(*unstructured.Unstructured); ok {
+		clusterName = unstructuredObj.GetName()
+		debug.Println("Processing cluster deletion:", clusterName)
+	} else {
+		debug.Println("Received unknown object type in deleteCluster")
+		return
+	}
+
+	if clusterName == "" {
+		debug.Println("Could not determine cluster name for deletion")
+		return
+	}
+
+	// Remove the cluster from the list if it exists
+	for i, name := range s.clusters {
+		if name == clusterName {
+			s.clusters = append(s.clusters[:i], s.clusters[i+1:]...)
+			debug.Println("Removed cluster from list:", clusterName)
+
+			// Also remove from conditions map to prevent memory leaks
+			if _, exists := s.clusterConditions[clusterName]; exists {
+				delete(s.clusterConditions, clusterName)
+				debug.Println("Removed cluster conditions for:", clusterName)
+			}
+
+			s.broadcastClusters()
+			break
+		}
+	}
+}
+
+// Helper function to broadcast the current list of clusters to all clients
+func (s *Server) broadcastClusters() {
 	s.clientsMutex.Lock()
 	defer s.clientsMutex.Unlock()
+
 	for client := range s.clients {
 		err := client.conn.WriteJSON(map[string]interface{}{
 			"type":     "clusters",
-			"clusters": newClusters,
+			"clusters": s.clusters,
 		})
 		if err != nil {
 			log.Printf("Error sending cluster update: %v", err)
 			client.conn.Close()
 			delete(s.clients, client)
+		}
+	}
+}
+
+// New function to handle cluster conditions using the object from the informer
+func (s *Server) updateConditions(obj interface{}) {
+	debug.Println("updateConditions called with object")
+
+	if obj != nil {
+		unstructuredObj, ok := obj.(*unstructured.Unstructured)
+		if ok {
+			clusterName := unstructuredObj.GetName()
+
+			// Extract conditions from the object
+			status, found, err := unstructured.NestedMap(unstructuredObj.Object, "status")
+			if err != nil {
+				debug.Println("Error getting status:", err)
+				return
+			}
+			if !found {
+				debug.Println("No status found in object for cluster:", clusterName)
+				return
+			}
+
+			conditions, found, err := unstructured.NestedSlice(status, "conditions")
+			if err != nil {
+				debug.Println("Error getting conditions:", err)
+				return
+			}
+			if !found {
+				debug.Println("No conditions found in status for cluster:", clusterName)
+				return
+			}
+
+			var conditionsList []map[string]interface{}
+			for _, condition := range conditions {
+				if condMap, ok := condition.(map[string]interface{}); ok {
+					conditionsList = append(conditionsList, condMap)
+				}
+			}
+
+			// Update our in-memory conditions for this cluster
+			s.clusterConditions[clusterName] = conditionsList
+			debug.Println("Updated conditions for cluster:", clusterName)
+
+			// Broadcast the updated conditions to all connected clients
+			s.clientsMutex.Lock()
+			defer s.clientsMutex.Unlock()
+
+			for client := range s.clients {
+				err := client.conn.WriteJSON(map[string]interface{}{
+					"type":       "clusterConditions",
+					"conditions": s.clusterConditions,
+				})
+				if err != nil {
+					log.Printf("Error sending condition update: %v", err)
+					client.conn.Close()
+					delete(s.clients, client)
+				}
+			}
 		}
 	}
 }
