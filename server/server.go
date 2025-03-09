@@ -576,7 +576,7 @@ func (s *Server) broadcastClusters() {
 	}
 }
 
-// New function to handle cluster conditions using the object from the informer
+// Function to handle cluster conditions using the object from the informer
 func (s *Server) updateConditions(obj interface{}) {
 	debug.Println("updateConditions called with object")
 
@@ -584,54 +584,63 @@ func (s *Server) updateConditions(obj interface{}) {
 		unstructuredObj, ok := obj.(*unstructured.Unstructured)
 		if ok {
 			clusterName := unstructuredObj.GetName()
+			debug.Println("Processing conditions for cluster:", clusterName)
 
-			// Extract conditions from the object
+			// Always ensure the cluster has an entry in the conditions map
+			if _, exists := s.clusterConditions[clusterName]; !exists {
+				s.clusterConditions[clusterName] = []map[string]interface{}{}
+				debug.Println("Initialized empty conditions for cluster:", clusterName)
+			}
+
+			// Extract conditions from the object if available
 			status, found, err := unstructured.NestedMap(unstructuredObj.Object, "status")
 			if err != nil {
 				debug.Println("Error getting status:", err)
-				return
-			}
-			if !found {
-				debug.Println("No status found in object for cluster:", clusterName)
-				return
-			}
-
-			conditions, found, err := unstructured.NestedSlice(status, "conditions")
-			if err != nil {
-				debug.Println("Error getting conditions:", err)
-				return
-			}
-			if !found {
-				debug.Println("No conditions found in status for cluster:", clusterName)
-				return
-			}
-
-			var conditionsList []map[string]interface{}
-			for _, condition := range conditions {
-				if condMap, ok := condition.(map[string]interface{}); ok {
-					conditionsList = append(conditionsList, condMap)
-				}
-			}
-
-			// Update our in-memory conditions for this cluster
-			s.clusterConditions[clusterName] = conditionsList
-			debug.Println("Updated conditions for cluster:", clusterName)
-
-			// Broadcast the updated conditions to all connected clients
-			s.clientsMutex.Lock()
-			defer s.clientsMutex.Unlock()
-
-			for client := range s.clients {
-				err := client.conn.WriteJSON(map[string]interface{}{
-					"type":       "clusterConditions",
-					"conditions": s.clusterConditions,
-				})
+			} else if found {
+				conditions, found, err := unstructured.NestedSlice(status, "conditions")
 				if err != nil {
-					log.Printf("Error sending condition update: %v", err)
-					client.conn.Close()
-					delete(s.clients, client)
+					debug.Println("Error getting conditions:", err)
+				} else if found && len(conditions) > 0 {
+					var conditionsList []map[string]interface{}
+					for _, condition := range conditions {
+						if condMap, ok := condition.(map[string]interface{}); ok {
+							conditionsList = append(conditionsList, condMap)
+						}
+					}
+
+					// Only update if we found actual conditions
+					if len(conditionsList) > 0 {
+						s.clusterConditions[clusterName] = conditionsList
+						debug.Println("Updated conditions for cluster:", clusterName)
+					}
+				} else {
+					debug.Println("No conditions found in status for cluster:", clusterName)
 				}
+			} else {
+				debug.Println("No status found in object for cluster:", clusterName)
 			}
+
+			// Always broadcast the conditions to all connected clients
+			// This ensures the UI updates even when there are no conditions yet
+			s.broadcastConditions()
+		}
+	}
+}
+
+// Helper function to broadcast the current conditions to all clients
+func (s *Server) broadcastConditions() {
+	s.clientsMutex.Lock()
+	defer s.clientsMutex.Unlock()
+
+	for client := range s.clients {
+		err := client.conn.WriteJSON(map[string]interface{}{
+			"type":       "clusterConditions",
+			"conditions": s.clusterConditions,
+		})
+		if err != nil {
+			log.Printf("Error sending condition update: %v", err)
+			client.conn.Close()
+			delete(s.clients, client)
 		}
 	}
 }
