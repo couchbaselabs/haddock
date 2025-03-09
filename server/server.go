@@ -3,10 +3,15 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
+
+	"strings"
 	"sync"
 	"time"
 
@@ -81,16 +86,151 @@ func (s *Server) Start() {
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// First check if this is an API request
+		if s.isAPIRequest(r) {
+			s.handleCouchbaseAPIProxy(w, r)
+			return
+		}
+
+		// Otherwise serve the dashboard
 		tmpl, _ := template.ParseFiles("templates/index.html")
 		tmpl.Execute(w, s.clusters)
 	})
 
 	http.HandleFunc("/ws", s.handleConnections)
 
+	// Add a handler for the Couchbase UI proxy - maintain trailing slash to ensure path consistency
+	http.HandleFunc("/cui/", s.handleCouchbaseUIProxy)
+
 	go s.handleMessages()
 
 	log.Println("Server started on :3000")
 	log.Fatal(http.ListenAndServe(":3000", nil))
+}
+
+// isAPIRequest determines if the request is for a Couchbase API endpoint
+func (s *Server) isAPIRequest(r *http.Request) bool {
+	// Check for XHR requests
+	if r.Header.Get("X-Requested-With") == "XMLHttpRequest" {
+		return true
+	}
+
+	// Check Accept header - API requests typically accept JSON or other data formats
+	accept := r.Header.Get("Accept")
+	if strings.Contains(accept, "application/json") ||
+		strings.Contains(accept, "application/xml") ||
+		strings.Contains(accept, "*/*") {
+		// But exclude requests that explicitly want HTML
+		if !strings.Contains(accept, "text/html") {
+			return true
+		}
+	}
+
+	// Check for other API-specific headers
+	if r.Header.Get("Content-Type") == "application/json" {
+		return true
+	}
+
+	// Also check if this is definitely a browser navigation request
+	// Browser navigations typically accept HTML
+	if strings.Contains(accept, "text/html") &&
+		r.Method == "GET" &&
+		r.Header.Get("Sec-Fetch-Mode") == "navigate" {
+		return false
+	}
+
+	// If we're still not sure, fall back to the path-based check for common API paths
+	apiPrefixes := []string{
+		"/pools",
+		"/settings",
+		"/controller",
+		"/nodes",
+		"/indexes",
+		"/query",
+	}
+
+	for _, prefix := range apiPrefixes {
+		if strings.HasPrefix(r.URL.Path, prefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// handleCouchbaseAPIProxy handles API requests that need to be forwarded to the active Couchbase cluster
+func (s *Server) handleCouchbaseAPIProxy(w http.ResponseWriter, r *http.Request) {
+	// Determine which cluster to use by checking the referer header
+	referer := r.Header.Get("Referer")
+	if referer == "" {
+		http.Error(w, "API requests require a Referer header to determine target cluster", http.StatusBadRequest)
+		return
+	}
+
+	// Extract cluster name from the referer
+	// Expected format: http://host:port/cui/clustername/...
+	refererURL, err := url.Parse(referer)
+	if err != nil {
+		http.Error(w, "Invalid referer URL", http.StatusBadRequest)
+		return
+	}
+
+	refPath := refererURL.Path
+	if !strings.HasPrefix(refPath, "/cui/") {
+		http.Error(w, "Referer path must start with /cui/", http.StatusBadRequest)
+		return
+	}
+
+	parts := strings.SplitN(strings.TrimPrefix(refPath, "/cui/"), "/", 2)
+	if len(parts) == 0 || parts[0] == "" {
+		http.Error(w, "Could not determine cluster name from referer", http.StatusBadRequest)
+		return
+	}
+
+	clusterName := parts[0]
+	log.Printf("API request to %s for cluster: %s (from referer: %s)", r.URL.Path, clusterName, referer)
+
+	// Get the namespace from environment variable
+	namespace := os.Getenv("WATCH_NAMESPACE")
+	if namespace == "" {
+		http.Error(w, "WATCH_NAMESPACE environment variable not set", http.StatusInternalServerError)
+		return
+	}
+
+	// Create the service name for the Couchbase UI (following standard naming)
+	svcName := clusterName + "-ui"
+
+	// Create the target URL - using port 8091 which is the Couchbase UI port
+	targetURL := &url.URL{
+		Scheme: "http",
+		Host:   fmt.Sprintf("%s.%s.svc.cluster.local:8091", svcName, namespace),
+	}
+
+	log.Printf("Proxying API request to: %s%s", targetURL.String(), r.URL.Path)
+
+	// Create a reverse proxy
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+
+	// Handle errors
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		log.Printf("API Proxy error: %v", err)
+		http.Error(w, fmt.Sprintf("API Proxy error: %v", err), http.StatusBadGateway)
+	}
+
+	// Update the Host header and target
+	originalDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		// Set up the request
+		originalDirector(req)
+		req.Host = targetURL.Host
+		req.URL.Scheme = targetURL.Scheme
+		req.URL.Host = targetURL.Host
+		// Keep the original path
+		log.Printf("Final API request: %s", req.URL.String())
+	}
+
+	// Serve the proxy request
+	proxy.ServeHTTP(w, r)
 }
 
 // this function is a goroutine that handles the websocket connection
@@ -304,4 +444,95 @@ func (s *Server) updateClusters() {
 			delete(s.clients, client)
 		}
 	}
+}
+
+// handleCouchbaseUIProxy handles reverse proxy requests to Couchbase UI
+func (s *Server) handleCouchbaseUIProxy(w http.ResponseWriter, r *http.Request) {
+	// Extract the cluster name from the URL path
+	// URL format: /cui/clustername/...
+	path := r.URL.Path
+	parts := strings.SplitN(strings.TrimPrefix(path, "/cui/"), "/", 2)
+
+	if len(parts) == 0 || parts[0] == "" {
+		http.Error(w, "Cluster name is required", http.StatusBadRequest)
+		return
+	}
+
+	clusterName := parts[0]
+	log.Printf("Proxying to Couchbase UI for cluster: %s, original path: %s", clusterName, path)
+
+	// Get the namespace from environment variable
+	namespace := os.Getenv("WATCH_NAMESPACE")
+	if namespace == "" {
+		http.Error(w, "WATCH_NAMESPACE environment variable not set", http.StatusInternalServerError)
+		return
+	}
+
+	// Create the service name for the Couchbase UI (following standard naming)
+	svcName := clusterName + "-ui"
+
+	// Create the target URL - using port 8091 which is the Couchbase UI port
+	targetURL := &url.URL{
+		Scheme: "http",
+		Host:   fmt.Sprintf("%s.%s.svc.cluster.local:8091", svcName, namespace),
+	}
+
+	//log.Printf("Proxying to: %s", targetURL.String())
+
+	// Create a reverse proxy
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+
+	// Handle errors
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		log.Printf("Proxy error: %v", err)
+		http.Error(w, fmt.Sprintf("Proxy error: %v", err), http.StatusBadGateway)
+	}
+
+	// Update the Host header and target
+	originalDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		// First, let the default director set up the request
+		originalDirector(req)
+
+		// Set the Host header
+		req.Host = targetURL.Host
+
+		// Create a new URL with the target scheme and host
+		req.URL.Scheme = targetURL.Scheme
+		req.URL.Host = targetURL.Host
+
+		// Strip /cui/clustername from the path
+		cuiPrefix := fmt.Sprintf("/cui/%s", clusterName)
+		strippedPath := strings.TrimPrefix(req.URL.Path, cuiPrefix)
+		req.URL.Path = strippedPath
+
+		//log.Printf("Proxying request: from %s to %s", path, req.URL.String())
+	}
+
+	// Modify the response to handle redirects and add base href
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		// Handle redirects (3xx responses)
+		if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+			location := resp.Header.Get("Location")
+			if location != "" {
+				log.Printf("Original redirect location: %s", location)
+				redirectURL, err := url.Parse(location)
+				if err != nil {
+					log.Printf("Error parsing redirect URL: %v", err)
+				} else {
+					// Extract the path and rewrite it to our proxy format
+					path := redirectURL.Path
+					newLocation := fmt.Sprintf("/cui/%s%s", clusterName, path)
+					//log.Printf("Rewriting absolute redirect to: %s", newLocation)
+					resp.Header.Set("Location", newLocation)
+				}
+
+			}
+		}
+
+		return nil
+	}
+
+	// Serve the proxy request directly without path rewriting
+	proxy.ServeHTTP(w, r)
 }
