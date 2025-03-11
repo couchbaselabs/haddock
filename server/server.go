@@ -34,6 +34,7 @@ type Client struct {
 	watchEventslist map[string]bool
 	watchLogs       bool
 	logSessionId    string
+	eventSessionId  string
 }
 
 type Server struct {
@@ -290,6 +291,7 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 		watchEventslist: make(map[string]bool),
 		watchLogs:       false,
 		logSessionId:    "",
+		eventSessionId:  "",
 	}
 
 	s.clientsMutex.Lock()
@@ -332,6 +334,7 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 				client.watchEventslist[cluster] = true
 				s.startWatcher(cluster)
 			}
+			client.eventSessionId = request.SessionID
 			s.cleanupEventWatchers()
 
 		case "logs":
@@ -448,6 +451,9 @@ func (s *Server) handleMessages() {
 				shouldSend = client.watchLogs
 				//debug.Println("shouldSend", shouldSend)
 				msg.SessionID = client.logSessionId
+			} else if msg.Type == "event" {
+				shouldSend = client.watchEventslist[msg.ClusterName]
+				msg.SessionID = client.eventSessionId
 			} else {
 				shouldSend = client.watchEventslist[msg.ClusterName]
 			}

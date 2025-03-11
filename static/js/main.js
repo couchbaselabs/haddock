@@ -1,6 +1,7 @@
 // ==================== CONSTANTS AND GLOBALS ======================
 const socket = new WebSocket("ws://" + window.location.host + "/ws");
 let currentLogSessionId = null;
+let currentEventSessionId = null;
 let logFragment = document.createDocumentFragment();
 let batchTimeoutId = null;
 let eventFragments = {}; // Map to store event fragments by cluster name
@@ -235,6 +236,13 @@ function handleLogsSelection(event) {
 function handleClusterSelection() {
     const selectedClusters = Array.from(document.querySelectorAll('.cluster-checkbox:checked')).map(cb => cb.value);
     
+    // Generate a new session ID if we have selected clusters
+    if (selectedClusters.length > 0) {
+        currentEventSessionId = generateSessionId();
+    } else {
+        currentEventSessionId = null;
+    }
+    
     // Remove event divs for unselected clusters
     const eventsContainerData = document.getElementById("eventsContainerData");
     const clusterDivs = eventsContainerData.getElementsByClassName('cluster-events');
@@ -248,7 +256,8 @@ function handleClusterSelection() {
 
     socket.send(JSON.stringify({
         type: "clusters",
-        clusters: selectedClusters
+        clusters: selectedClusters,
+        sessionId: currentEventSessionId
     }));
 }
 
@@ -259,7 +268,9 @@ function handleWebSocketMessage(event) {
             updateClusters(data.clusters);
             break;
         case "event":
-            updateEvents(data);
+            if (data.sessionId === currentEventSessionId) {
+                updateEvents(data);
+            }
             break;
         case "log":
             if (data.sessionId === currentLogSessionId) {
@@ -267,6 +278,7 @@ function handleWebSocketMessage(event) {
             }
             break;
         case "clusterConditions":
+            console.log("conditions triggered")
             renderClusterTiles(data.conditions);
             break;
     }
