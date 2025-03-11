@@ -48,6 +48,8 @@ type Server struct {
 	clientsMutex       sync.Mutex
 	logMutex           sync.Mutex
 	eventWatchersMutex sync.Mutex
+	eventCache         map[string][]utils.Message // Map of clusterName to cached events
+	eventCacheMutex    sync.RWMutex
 	clientset          *kubernetes.Clientset
 	dynamicClient      dynamic.Interface
 }
@@ -59,6 +61,7 @@ func NewServer() *Server {
 		eventWatchers:     make(map[string]context.CancelFunc),
 		broadcast:         make(chan utils.Message),
 		clusterConditions: make(map[string][]map[string]interface{}),
+		eventCache:        make(map[string][]utils.Message),
 	}
 }
 
@@ -328,13 +331,19 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 		}
 
 		switch request.Type {
-		case "clusters":
+		case "clustersevents":
+			// Set the event session ID
+			client.eventSessionId = request.SessionID
+
+			// Update the watched clusters
 			client.watchEventslist = make(map[string]bool)
 			for _, cluster := range request.Clusters {
 				client.watchEventslist[cluster] = true
 				s.startWatcher(cluster)
+
+				// Send cached events for this cluster
+				go s.sendCachedEvents(client, cluster)
 			}
-			client.eventSessionId = request.SessionID
 			s.cleanupEventWatchers()
 
 		case "logs":
@@ -379,8 +388,16 @@ func (s *Server) startWatcher(clusterName string) {
 		return
 	}
 
+	// Load initial events into the cache
+	initialEvents := events.GetInitialEvents(s.clientset, s.dynamicClient, clusterName)
+	s.eventCacheMutex.Lock()
+	s.eventCache[clusterName] = initialEvents
+	s.eventCacheMutex.Unlock()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	s.eventWatchers[clusterName] = cancel
+
+	// Start the event watcher
 	go events.StartEventWatcher(ctx, s.clientset, s.dynamicClient, clusterName, s.broadcast)
 }
 
@@ -401,6 +418,9 @@ func (s *Server) cleanupEventWatchers() {
 		if !activeClusters[cluster] {
 			cancel()
 			delete(s.eventWatchers, cluster)
+			s.eventCacheMutex.Lock()
+			delete(s.eventCache, cluster)
+			s.eventCacheMutex.Unlock()
 		}
 	}
 }
@@ -444,6 +464,18 @@ func (s *Server) checkAndStopLogWatcher() {
 func (s *Server) handleMessages() {
 	for {
 		msg := <-s.broadcast
+
+		// Cache events
+		if msg.Type == "event" {
+			s.eventCacheMutex.Lock()
+			clusterEvents := s.eventCache[msg.ClusterName]
+			if len(clusterEvents) >= 1000 { // Limit cache size
+				clusterEvents = clusterEvents[1:] // Remove oldest event
+			}
+			s.eventCache[msg.ClusterName] = append(clusterEvents, msg)
+			s.eventCacheMutex.Unlock()
+		}
+
 		s.clientsMutex.Lock()
 		for client := range s.clients {
 			shouldSend := false
@@ -740,4 +772,24 @@ func (s *Server) handleCouchbaseUIProxy(w http.ResponseWriter, r *http.Request) 
 
 	// Serve the proxy request directly without path rewriting
 	proxy.ServeHTTP(w, r)
+}
+
+// sendCachedEvents sends cached events for a cluster to a specific client
+func (s *Server) sendCachedEvents(client *Client, clusterName string) {
+	s.eventCacheMutex.RLock()
+	events, exists := s.eventCache[clusterName]
+	s.eventCacheMutex.RUnlock()
+
+	if !exists || len(events) == 0 {
+		return
+	}
+
+	for _, event := range events {
+		event.SessionID = client.eventSessionId
+		err := client.conn.WriteJSON(event)
+		if err != nil {
+			debug.Println("Error sending cached event:", err)
+			return
+		}
+	}
 }

@@ -255,7 +255,7 @@ function handleClusterSelection() {
     });
 
     socket.send(JSON.stringify({
-        type: "clusters",
+        type: "clustersevents",
         clusters: selectedClusters,
         sessionId: currentEventSessionId
     }));

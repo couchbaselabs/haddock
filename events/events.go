@@ -10,6 +10,7 @@ import (
 	"cod/utils"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -75,4 +76,37 @@ func isRelevantEvent(event *v1.Event, clientset *kubernetes.Clientset, dynamicCl
 
 	//debug.Println("Irrelevant event")
 	return false
+}
+
+// GetInitialEvents retrieves existing events for a cluster
+func GetInitialEvents(clientset *kubernetes.Clientset, dynamicClient dynamic.Interface, clusterName string) []utils.Message {
+	namespace := os.Getenv("WATCH_NAMESPACE")
+	if namespace == "" {
+		return nil
+	}
+
+	var initialEvents []utils.Message
+
+	// List existing events
+	eventList, err := clientset.CoreV1().Events(namespace).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return nil
+	}
+
+	// Convert to Message objects
+	for _, event := range eventList.Items {
+		if isRelevantEvent(&event, clientset, dynamicClient, clusterName) {
+			msg := utils.Message{
+				Type:        "event",
+				ClusterName: clusterName,
+				Name:        event.Name,
+				Message:     event.Message,
+				Kind:        event.InvolvedObject.Kind,
+				ObjectName:  event.InvolvedObject.Name,
+			}
+			initialEvents = append(initialEvents, msg)
+		}
+	}
+
+	return initialEvents
 }
