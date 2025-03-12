@@ -8,6 +8,7 @@ import (
 
 	"cod/debug"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
@@ -76,4 +77,35 @@ func StartClusterWatcher(ctx context.Context, dynamicClient dynamic.Interface,
 
 	factory.Start(ctx.Done())
 	cache.WaitForCacheSync(ctx.Done(), clusterInformer.HasSynced)
+}
+
+// LoadClusterConditions fetches all existing CouchbaseCluster objects and updates their conditions
+// This should be called when a new client connects to immediately get all cluster conditions
+func LoadClusterConditions(dynamicClient dynamic.Interface, updateCondition func(obj interface{})) error {
+	namespace := os.Getenv("WATCH_NAMESPACE")
+	if namespace == "" {
+		return nil
+	}
+
+	// Create the CouchbaseCluster GVR
+	gvr := schema.GroupVersionResource{
+		Group:    "couchbase.com",
+		Version:  "v2",
+		Resource: "couchbaseclusters",
+	}
+
+	// List all CouchbaseCluster objects in the namespace
+	clusters, err := dynamicClient.Resource(gvr).Namespace(namespace).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		debug.Println("Error listing CouchbaseCluster objects:", err)
+		return err
+	}
+
+	// Process each cluster to update conditions
+	for _, cluster := range clusters.Items {
+		debug.Println("Loading conditions for cluster:", cluster.GetName())
+		updateCondition(&cluster)
+	}
+
+	return nil
 }

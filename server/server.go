@@ -301,6 +301,14 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 	s.clients[client] = true
 	s.clientsMutex.Unlock()
 
+	// Immediately load and broadcast cluster conditions for the new client
+	go func() {
+		err := cluster.LoadClusterConditions(s.dynamicClient, s.updateConditions)
+		if err != nil {
+			debug.Println("Error loading cluster conditions:", err)
+		}
+	}()
+
 	defer func() {
 		s.clientsMutex.Lock()
 		delete(s.clients, client)
