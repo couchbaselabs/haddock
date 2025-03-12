@@ -2,12 +2,12 @@ package cluster
 
 import (
 	"context"
-	"log"
 	"os"
 	"time"
 
-	"cod/debug"
+	"cod/logger"
 
+	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -23,7 +23,7 @@ func StartClusterWatcher(ctx context.Context, dynamicClient dynamic.Interface,
 
 	namespace := os.Getenv("WATCH_NAMESPACE")
 	if namespace == "" {
-		log.Println("WATCH_NAMESPACE environment variable not set")
+		logger.Log.Warn("WATCH_NAMESPACE environment variable not set")
 		return
 	}
 
@@ -38,38 +38,35 @@ func StartClusterWatcher(ctx context.Context, dynamicClient dynamic.Interface,
 
 	clusterInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			debug.Println("Cluster added event received")
+			logger.Log.Debug("Cluster added event received")
 			if unstructuredObj, ok := obj.(*unstructured.Unstructured); ok {
-				debug.Println("Cluster added:", unstructuredObj.GetName())
+				logger.Log.Info("Cluster added", zap.String("name", unstructuredObj.GetName()))
 			}
 			addCluster(obj)
 			updateCondition(obj)
 		},
 		UpdateFunc: func(_, newObj interface{}) {
-			debug.Println("Cluster updated event received")
+			logger.Log.Debug("Cluster updated event received")
 			if unstructuredObj, ok := newObj.(*unstructured.Unstructured); ok {
-				debug.Println("Cluster updated:", unstructuredObj.GetName())
-				// Check if this is a deletion update (has deletion timestamp)
+				logger.Log.Info("Cluster updated", zap.String("name", unstructuredObj.GetName()))
 				if unstructuredObj.GetDeletionTimestamp() != nil {
-					debug.Println("Cluster is being deleted (UpdateFunc):", unstructuredObj.GetName())
+					logger.Log.Debug("Cluster is being deleted (UpdateFunc)", zap.String("name", unstructuredObj.GetName()))
 				}
 			}
 			updateCondition(newObj)
 		},
 		DeleteFunc: func(obj interface{}) {
-			debug.Println("Cluster deleted event received")
-			// Try to get details from the object
+			logger.Log.Debug("Cluster deleted event received")
 			if unstructuredObj, ok := obj.(*unstructured.Unstructured); ok {
-				debug.Println("Cluster deleted:", unstructuredObj.GetName())
+				logger.Log.Info("Cluster deleted", zap.String("name", unstructuredObj.GetName()))
 			} else if tombstone, ok := obj.(cache.DeletedFinalStateUnknown); ok {
-				debug.Println("DeleteFunc received tombstone object")
 				if unstructuredObj, ok := tombstone.Obj.(*unstructured.Unstructured); ok {
-					debug.Println("Deleted cluster (from tombstone):", unstructuredObj.GetName())
+					logger.Log.Debug("Deleted cluster (from tombstone)", zap.String("name", unstructuredObj.GetName()))
 				} else {
-					debug.Println("Tombstone contains unknown object type")
+					logger.Log.Warn("Tombstone contains unknown object type")
 				}
 			} else {
-				debug.Println("DeleteFunc received unknown object type")
+				logger.Log.Warn("DeleteFunc received unknown object type")
 			}
 			deleteCluster(obj)
 		},
@@ -97,13 +94,13 @@ func LoadClusterConditions(dynamicClient dynamic.Interface, updateCondition func
 	// List all CouchbaseCluster objects in the namespace
 	clusters, err := dynamicClient.Resource(gvr).Namespace(namespace).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
-		debug.Println("Error listing CouchbaseCluster objects:", err)
+		logger.Log.Error("Error listing CouchbaseCluster objects", zap.Error(err))
 		return err
 	}
 
 	// Process each cluster to update conditions
 	for _, cluster := range clusters.Items {
-		debug.Println("Loading conditions for cluster:", cluster.GetName())
+		logger.Log.Debug("Loading conditions for cluster", zap.String("name", cluster.GetName()))
 		updateCondition(&cluster)
 	}
 

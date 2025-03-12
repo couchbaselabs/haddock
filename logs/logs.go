@@ -5,12 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"log"
 	"os"
 	"time"
 
+	"cod/logger"
 	"cod/utils"
 
+	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -24,19 +25,19 @@ type LogTimestamp struct {
 func StartLogWatcher(ctx context.Context, clientset *kubernetes.Clientset, broadcast chan<- utils.Message, startTime, endTime *time.Time, follow bool) {
 	namespace := os.Getenv("WATCH_NAMESPACE")
 	if namespace == "" {
-		log.Fatalf("WATCH_NAMESPACE environment variable not set")
+		logger.Log.Fatal("WATCH_NAMESPACE environment variable not set")
 	}
 
 	pods, err := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: "app=couchbase-operator",
 	})
 	if err != nil {
-		log.Printf("Error listing operator pods: %v", err)
+		logger.Log.Error("Error listing operator pods", zap.Error(err))
 		return
 	}
 
 	if len(pods.Items) == 0 {
-		log.Printf("No operator pods found")
+		logger.Log.Warn("No operator pods found")
 		return
 	}
 
@@ -55,7 +56,7 @@ func StartLogWatcher(ctx context.Context, clientset *kubernetes.Clientset, broad
 	req := clientset.CoreV1().Pods(namespace).GetLogs(podName, logOptions)
 	stream, err := req.Stream(ctx)
 	if err != nil {
-		log.Printf("Error getting log stream: %v", err)
+		logger.Log.Error("Error getting log stream", zap.Error(err))
 		return
 	}
 	defer stream.Close()
@@ -69,7 +70,7 @@ func StartLogWatcher(ctx context.Context, clientset *kubernetes.Clientset, broad
 			line, err := reader.ReadString('\n')
 			if err != nil {
 				if err != io.EOF {
-					log.Printf("Error reading log line: %v", err)
+					logger.Log.Error("Error reading log line", zap.Error(err))
 				}
 				return
 			}
@@ -77,7 +78,7 @@ func StartLogWatcher(ctx context.Context, clientset *kubernetes.Clientset, broad
 			// Parse just the timestamp
 			var logTime LogTimestamp
 			if err := json.Unmarshal([]byte(line), &logTime); err != nil {
-				log.Printf("Error parsing log timestamp: %v", err)
+				logger.Log.Error("Error parsing log timestamp", zap.Error(err))
 				continue
 			}
 

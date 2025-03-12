@@ -3,8 +3,9 @@ package utils
 import (
 	"context"
 
-	"cod/debug"
+	"cod/logger"
 
+	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
@@ -24,15 +25,15 @@ type Message struct {
 // getPodLabels retrieves labels of an involved pod
 func GetPodLabels(clientset *kubernetes.Clientset, dynamicClient dynamic.Interface, obj v1.ObjectReference) map[string]string {
 	if obj.Kind == "Pod" {
-		debug.Println("Fetching labels for pod:", obj.Name)
+		logger.Log.Debug("Fetching labels for pod", zap.String("name", obj.Name))
 		pod, err := clientset.CoreV1().Pods(obj.Namespace).Get(context.TODO(), obj.Name, metav1.GetOptions{})
 		if err != nil {
-			debug.Println("Error fetching pod:", err)
+			logger.Log.Error("Error fetching pod", zap.Error(err))
 			return nil
 		}
 		return pod.Labels
 	} else {
-		debug.Println("Unsupported kind:", obj.Kind)
+		logger.Log.Debug("Unsupported kind", zap.String("kind", obj.Kind))
 		return nil
 	}
 }

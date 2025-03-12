@@ -6,9 +6,10 @@ import (
 	"os"
 	"time"
 
-	//"cod/debug"
+	"cod/logger"
 	"cod/utils"
 
+	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
@@ -23,7 +24,7 @@ import (
 func StartEventWatcher(ctx context.Context, clientset *kubernetes.Clientset, dynamicClient dynamic.Interface, clusterName string, broadcast chan utils.Message) {
 	namespace := os.Getenv("WATCH_NAMESPACE")
 	if namespace == "" {
-		//debug.Println("WATCH_NAMESPACE environment variable not set")
+		logger.Log.Warn("WATCH_NAMESPACE environment variable not set")
 		return
 	}
 
@@ -32,7 +33,7 @@ func StartEventWatcher(ctx context.Context, clientset *kubernetes.Clientset, dyn
 
 	eventInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			//debug.Println("Event added")
+			logger.Log.Debug("Event added")
 			event, ok := obj.(*v1.Event)
 			if !ok || !isRelevantEvent(event, clientset, dynamicClient, clusterName) {
 				return
@@ -55,26 +56,26 @@ func StartEventWatcher(ctx context.Context, clientset *kubernetes.Clientset, dyn
 
 // isRelevantEvent checks if the event is relevant based on labels
 func isRelevantEvent(event *v1.Event, clientset *kubernetes.Clientset, dynamicClient dynamic.Interface, clusterName string) bool {
-	// debug.Println("-------------------------------------------------------")
-	// debug.Println("Event kind:", event.InvolvedObject.Kind)
-	// debug.Println("Event object name:", event.InvolvedObject.Name)
-	// debug.Println("Event name:", event.Name)
-	// debug.Println("Event message:", event.Message)
+	logger.Log.Debug("Checking event relevance",
+		zap.String("kind", event.InvolvedObject.Kind),
+		zap.String("objectName", event.InvolvedObject.Name),
+		zap.String("eventName", event.Name),
+		zap.String("message", event.Message))
 
 	if event.InvolvedObject.Kind == "Pod" {
 		labels := utils.GetPodLabels(clientset, dynamicClient, event.InvolvedObject)
 		if labels["couchbase_cluster"] == clusterName || labels["app"] == "couchbase-operator" { // app label is used for couchbase-operator
-			//debug.Println("Relevant pod event")
+			logger.Log.Debug("Relevant pod event")
 			return true
 		}
 	}
 
 	if event.InvolvedObject.Kind == "CouchbaseCluster" && event.InvolvedObject.Name == clusterName {
-		//debug.Println("Relevant cluster event")
+		logger.Log.Debug("Relevant cluster event")
 		return true
 	}
 
-	//debug.Println("Irrelevant event")
+	logger.Log.Debug("Irrelevant event")
 	return false
 }
 

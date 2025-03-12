@@ -1,13 +1,15 @@
 package main
 
 import (
-
-    "cod/server"
+	"cod/logger"
+	"cod/server"
 )
 
-
-
 func main() {
-    ser := server.NewServer()
-    ser.Start()
+	// Initialize the logger
+	logger.Init()
+
+	// Start the server
+	ser := server.NewServer()
+	ser.Start()
 }

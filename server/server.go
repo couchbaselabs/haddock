@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -16,12 +15,13 @@ import (
 	"time"
 
 	"cod/cluster"
-	"cod/debug"
 	"cod/events"
+	"cod/logger"
 	"cod/logs"
 	"cod/utils"
 
 	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -69,22 +69,22 @@ func (s *Server) Start() {
 	var err error
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		log.Fatalf("Failed to get in-cluster config: %v", err)
+		logger.Log.Fatal("Failed to get in-cluster config", zap.Error(err))
 	}
 
 	s.clientset, err = kubernetes.NewForConfig(config)
 	if err != nil {
-		log.Fatalf("Failed to create Kubernetes client: %v", err)
+		logger.Log.Fatal("Failed to create Kubernetes client", zap.Error(err))
 	}
 
 	s.dynamicClient, err = dynamic.NewForConfig(config)
 	if err != nil {
-		log.Fatalf("Failed to create dynamic client: %v", err)
+		logger.Log.Fatal("Failed to create dynamic client", zap.Error(err))
 	}
 
 	namespace := os.Getenv("WATCH_NAMESPACE")
 	if namespace == "" {
-		log.Fatalf("WATCH_NAMESPACE environment variable not set")
+		logger.Log.Fatal("WATCH_NAMESPACE environment variable not set")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -135,7 +135,7 @@ func (s *Server) Start() {
 		// Render the cluster template with the cluster name
 		tmpl, err := template.ParseFiles("templates/cluster.html")
 		if err != nil {
-			log.Printf("Error parsing cluster template: %v", err)
+			logger.Log.Error("Error parsing cluster template", zap.Error(err))
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
@@ -147,7 +147,7 @@ func (s *Server) Start() {
 		}
 
 		if err := tmpl.Execute(w, data); err != nil {
-			log.Printf("Error executing cluster template: %v", err)
+			logger.Log.Error("Error executing cluster template", zap.Error(err))
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
@@ -160,8 +160,10 @@ func (s *Server) Start() {
 
 	go s.handleMessages()
 
-	log.Println("Server started on :3000")
-	log.Fatal(http.ListenAndServe(":3000", nil))
+	logger.Log.Info("Server started on :3000")
+	if err := http.ListenAndServe(":3000", nil); err != nil {
+		logger.Log.Fatal("Server failed", zap.Error(err))
+	}
 }
 
 // isAPIRequest determines if the request is for a Couchbase API endpoint
@@ -244,7 +246,7 @@ func (s *Server) handleCouchbaseAPIProxy(w http.ResponseWriter, r *http.Request)
 	}
 
 	clusterName := parts[0]
-	log.Printf("API request to %s for cluster: %s (from referer: %s)", r.URL.Path, clusterName, referer)
+	logger.Log.Info("API request to", zap.String("path", r.URL.Path), zap.String("cluster", clusterName), zap.String("referer", referer))
 
 	// Get the namespace from environment variable
 	namespace := os.Getenv("WATCH_NAMESPACE")
@@ -262,14 +264,14 @@ func (s *Server) handleCouchbaseAPIProxy(w http.ResponseWriter, r *http.Request)
 		Host:   fmt.Sprintf("%s.%s.svc.cluster.local:8091", svcName, namespace),
 	}
 
-	log.Printf("Proxying API request to: %s%s", targetURL.String(), r.URL.Path)
+	logger.Log.Info("Proxying API request to", zap.String("targetURL", targetURL.String()))
 
 	// Create a reverse proxy
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 
 	// Handle errors
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		log.Printf("API Proxy error: %v", err)
+		logger.Log.Error("API Proxy error", zap.Error(err))
 		http.Error(w, fmt.Sprintf("API Proxy error: %v", err), http.StatusBadGateway)
 	}
 
@@ -282,7 +284,7 @@ func (s *Server) handleCouchbaseAPIProxy(w http.ResponseWriter, r *http.Request)
 		req.URL.Scheme = targetURL.Scheme
 		req.URL.Host = targetURL.Host
 		// Keep the original path
-		log.Printf("Final API request: %s", req.URL.String())
+		logger.Log.Info("Final API request", zap.String("requestURL", req.URL.String()))
 	}
 
 	// Serve the proxy request
@@ -291,10 +293,10 @@ func (s *Server) handleCouchbaseAPIProxy(w http.ResponseWriter, r *http.Request)
 
 // this function is a goroutine that handles the websocket connection
 func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
-	//debug.Println("Handling ws connection")
+	logger.Log.Debug("Handling websocket connection")
 	ws, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Fatalf("Failed to upgrade to websocket: %v", err)
+		logger.Log.Fatal("Failed to upgrade to websocket", zap.Error(err))
 	}
 	defer ws.Close()
 
@@ -314,7 +316,7 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		err := cluster.LoadClusterConditions(s.dynamicClient, s.updateConditions)
 		if err != nil {
-			debug.Println("Error loading cluster conditions:", err)
+			logger.Log.Error("Error loading cluster conditions", zap.Error(err))
 		}
 	}()
 
@@ -329,7 +331,7 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 	for {
 		_, message, err := ws.ReadMessage()
 		if err != nil {
-			log.Printf("Error reading message: %v", err)
+			logger.Log.Error("Error reading message", zap.Error(err))
 			break
 		}
 
@@ -343,7 +345,7 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 			Follow    bool     `json:"follow,omitempty"`
 		}
 		if err := json.Unmarshal(message, &request); err != nil {
-			log.Printf("Error unmarshalling message: %v", err)
+			logger.Log.Error("Error unmarshalling message", zap.Error(err))
 			continue
 		}
 
@@ -388,7 +390,10 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 				}
 
 				// Start the log watcher with appropriate parameters
-				debug.Println("Starting log watcher with startTime", startTime, "and endTime", endTime, "and follow", request.Follow)
+				logger.Log.Debug("Starting log watcher",
+					zap.Any("startTime", startTime),
+					zap.Any("endTime", endTime),
+					zap.Bool("follow", request.Follow))
 				s.startLogWatcher(startTime, endTime, request.Follow)
 			} else {
 				s.checkAndStopLogWatcher()
@@ -498,7 +503,6 @@ func (s *Server) handleMessages() {
 			shouldSend := false
 			if msg.Type == "log" {
 				shouldSend = client.watchLogs
-				//debug.Println("shouldSend", shouldSend)
 				msg.SessionID = client.logSessionId
 			} else if msg.Type == "event" {
 				shouldSend = client.watchEventslist[msg.ClusterName]
@@ -521,25 +525,25 @@ func (s *Server) handleMessages() {
 
 // Function to handle adding a new cluster
 func (s *Server) addCluster(obj interface{}) {
-	debug.Println("addCluster called with object")
+	logger.Log.Debug("addCluster called with object")
 
 	if obj == nil {
-		debug.Println("Warning: Received nil object in addCluster")
+		logger.Log.Warn("Received nil object in addCluster")
 		return
 	}
 
 	unstructuredObj, ok := obj.(*unstructured.Unstructured)
 	if !ok {
-		debug.Println("Object is not an Unstructured type in addCluster")
+		logger.Log.Warn("Object is not an Unstructured type in addCluster")
 		return
 	}
 
 	clusterName := unstructuredObj.GetName()
-	debug.Println("Processing cluster addition:", clusterName)
+	logger.Log.Debug("Processing cluster addition", zap.String("cluster", clusterName))
 
 	// Only add if not being deleted
 	if unstructuredObj.GetDeletionTimestamp() != nil {
-		debug.Println("Skipping add for cluster with deletion timestamp:", clusterName)
+		logger.Log.Debug("Skipping add for cluster with deletion timestamp", zap.String("cluster", clusterName))
 		return
 	}
 
@@ -554,19 +558,19 @@ func (s *Server) addCluster(obj interface{}) {
 
 	if !exists {
 		s.clusters = append(s.clusters, clusterName)
-		debug.Println("Added new cluster to list:", clusterName)
+		logger.Log.Info("Added new cluster to list", zap.String("cluster", clusterName))
 		s.broadcastClusters()
 	} else {
-		debug.Println("Cluster already in list:", clusterName)
+		logger.Log.Debug("Cluster already in list", zap.String("cluster", clusterName))
 	}
 }
 
 // Function to handle deleting a cluster
 func (s *Server) deleteCluster(obj interface{}) {
-	debug.Println("deleteCluster called with object")
+	logger.Log.Debug("deleteCluster called with object")
 
 	if obj == nil {
-		debug.Println("Warning: Received nil object in deleteCluster")
+		logger.Log.Warn("Received nil object in deleteCluster")
 		return
 	}
 
@@ -574,24 +578,24 @@ func (s *Server) deleteCluster(obj interface{}) {
 
 	// Handle the DeletedFinalStateUnknown case first
 	if tombstone, ok := obj.(cache.DeletedFinalStateUnknown); ok {
-		debug.Println("Received tombstone object in deleteCluster")
+		logger.Log.Debug("Received tombstone object in deleteCluster")
 		if unstructuredObj, ok := tombstone.Obj.(*unstructured.Unstructured); ok {
 			clusterName = unstructuredObj.GetName()
-			debug.Println("Extracted cluster name from tombstone:", clusterName)
+			logger.Log.Info("Extracted cluster name from tombstone", zap.String("cluster", clusterName))
 		} else {
-			debug.Println("Tombstone contains unknown object type")
+			logger.Log.Warn("Tombstone contains unknown object type")
 			return
 		}
 	} else if unstructuredObj, ok := obj.(*unstructured.Unstructured); ok {
 		clusterName = unstructuredObj.GetName()
-		debug.Println("Processing cluster deletion:", clusterName)
+		logger.Log.Info("Processing cluster deletion", zap.String("cluster", clusterName))
 	} else {
-		debug.Println("Received unknown object type in deleteCluster")
+		logger.Log.Warn("Received unknown object type in deleteCluster")
 		return
 	}
 
 	if clusterName == "" {
-		debug.Println("Could not determine cluster name for deletion")
+		logger.Log.Warn("Could not determine cluster name for deletion")
 		return
 	}
 
@@ -599,12 +603,12 @@ func (s *Server) deleteCluster(obj interface{}) {
 	for i, name := range s.clusters {
 		if name == clusterName {
 			s.clusters = append(s.clusters[:i], s.clusters[i+1:]...)
-			debug.Println("Removed cluster from list:", clusterName)
+			logger.Log.Info("Removed cluster from list", zap.String("cluster", clusterName))
 
 			// Also remove from conditions map to prevent memory leaks
 			if _, exists := s.clusterConditions[clusterName]; exists {
 				delete(s.clusterConditions, clusterName)
-				debug.Println("Removed cluster conditions for:", clusterName)
+				logger.Log.Info("Removed cluster conditions for", zap.String("cluster", clusterName))
 			}
 
 			s.broadcastClusters()
@@ -624,7 +628,7 @@ func (s *Server) broadcastClusters() {
 			"clusters": s.clusters,
 		})
 		if err != nil {
-			log.Printf("Error sending cluster update: %v", err)
+			logger.Log.Error("Error sending cluster update", zap.Error(err))
 			client.conn.Close()
 			delete(s.clients, client)
 		}
@@ -633,28 +637,28 @@ func (s *Server) broadcastClusters() {
 
 // Function to handle cluster conditions using the object from the informer
 func (s *Server) updateConditions(obj interface{}) {
-	debug.Println("updateConditions called with object")
+	logger.Log.Debug("updateConditions called with object")
 
 	if obj != nil {
 		unstructuredObj, ok := obj.(*unstructured.Unstructured)
 		if ok {
 			clusterName := unstructuredObj.GetName()
-			debug.Println("Processing conditions for cluster:", clusterName)
+			logger.Log.Debug("Processing conditions for cluster", zap.String("cluster", clusterName))
 
 			// Always ensure the cluster has an entry in the conditions map
 			if _, exists := s.clusterConditions[clusterName]; !exists {
 				s.clusterConditions[clusterName] = []map[string]interface{}{}
-				debug.Println("Initialized empty conditions for cluster:", clusterName)
+				logger.Log.Debug("Initialized empty conditions for cluster", zap.String("cluster", clusterName))
 			}
 
 			// Extract conditions from the object if available
 			status, found, err := unstructured.NestedMap(unstructuredObj.Object, "status")
 			if err != nil {
-				debug.Println("Error getting status:", err)
+				logger.Log.Error("Error getting status", zap.Error(err))
 			} else if found {
 				conditions, found, err := unstructured.NestedSlice(status, "conditions")
 				if err != nil {
-					debug.Println("Error getting conditions:", err)
+					logger.Log.Error("Error getting conditions", zap.Error(err))
 				} else if found && len(conditions) > 0 {
 					var conditionsList []map[string]interface{}
 					for _, condition := range conditions {
@@ -666,13 +670,13 @@ func (s *Server) updateConditions(obj interface{}) {
 					// Only update if we found actual conditions
 					if len(conditionsList) > 0 {
 						s.clusterConditions[clusterName] = conditionsList
-						debug.Println("Updated conditions for cluster:", clusterName)
+						logger.Log.Debug("Updated conditions for cluster", zap.String("cluster", clusterName))
 					}
 				} else {
-					debug.Println("No conditions found in status for cluster:", clusterName)
+					logger.Log.Debug("No conditions found in status for cluster", zap.String("cluster", clusterName))
 				}
 			} else {
-				debug.Println("No status found in object for cluster:", clusterName)
+				logger.Log.Debug("No status found in object for cluster", zap.String("cluster", clusterName))
 			}
 
 			// Always broadcast the conditions to all connected clients
@@ -693,7 +697,7 @@ func (s *Server) broadcastConditions() {
 			"conditions": s.clusterConditions,
 		})
 		if err != nil {
-			log.Printf("Error sending condition update: %v", err)
+			logger.Log.Error("Error sending condition update", zap.Error(err))
 			client.conn.Close()
 			delete(s.clients, client)
 		}
@@ -713,7 +717,7 @@ func (s *Server) handleCouchbaseUIProxy(w http.ResponseWriter, r *http.Request) 
 	}
 
 	clusterName := parts[0]
-	log.Printf("Proxying to Couchbase UI for cluster: %s, original path: %s", clusterName, path)
+	logger.Log.Info("Proxying to Couchbase UI for cluster", zap.String("cluster", clusterName), zap.String("path", path))
 
 	// Get the namespace from environment variable
 	namespace := os.Getenv("WATCH_NAMESPACE")
@@ -738,7 +742,7 @@ func (s *Server) handleCouchbaseUIProxy(w http.ResponseWriter, r *http.Request) 
 
 	// Handle errors
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		log.Printf("Proxy error: %v", err)
+		logger.Log.Error("Proxy error", zap.Error(err))
 		http.Error(w, fmt.Sprintf("Proxy error: %v", err), http.StatusBadGateway)
 	}
 
@@ -769,10 +773,10 @@ func (s *Server) handleCouchbaseUIProxy(w http.ResponseWriter, r *http.Request) 
 		if resp.StatusCode >= 300 && resp.StatusCode < 400 {
 			location := resp.Header.Get("Location")
 			if location != "" {
-				log.Printf("Original redirect location: %s", location)
+				logger.Log.Info("Original redirect location", zap.String("location", location))
 				redirectURL, err := url.Parse(location)
 				if err != nil {
-					log.Printf("Error parsing redirect URL: %v", err)
+					logger.Log.Error("Error parsing redirect URL", zap.Error(err))
 				} else {
 					// Extract the path and rewrite it to our proxy format
 					path := redirectURL.Path
@@ -805,7 +809,7 @@ func (s *Server) sendCachedEvents(client *Client, clusterName string) {
 		event.SessionID = client.eventSessionId
 		err := client.conn.WriteJSON(event)
 		if err != nil {
-			debug.Println("Error sending cached event:", err)
+			logger.Log.Error("Error sending cached event", zap.Error(err))
 			return
 		}
 	}
