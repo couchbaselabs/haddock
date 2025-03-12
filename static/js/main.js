@@ -24,7 +24,6 @@ let logsSearchTimeout = null;
 document.addEventListener('DOMContentLoaded', () => {
     initializeControls();
     initializeSearchFunctionality();
-    initializeCouchbaseUINavigation();
     
     // Set up WebSocket event handler
     socket.onmessage = handleWebSocketMessage;
@@ -605,22 +604,6 @@ function highlightMatches(text, matches) {
     return result;
 }
 
-// Initialize the Couchbase UI navigation controls
-function initializeCouchbaseUINavigation() {
-    const clusterSelect = document.getElementById('couchbaseUIClusterSelect');
-    const navigateButton = document.getElementById('couchbaseUINavigateBtn');
-    
-    navigateButton.addEventListener('click', () => {
-        const selectedCluster = clusterSelect.value;
-        if (selectedCluster) {
-            // Open the Couchbase UI in a new tab
-            window.open(`/cui/${selectedCluster}/`, '_blank');
-        } else {
-            alert('Please select a cluster first');
-        }
-    });
-}
-
 // Function to determine the tile color based on status and type
 function getTileColor(status, type) {
   // Unknown status takes precedence
@@ -733,7 +716,7 @@ function renderClusterTiles(clusterConditions) {
     
     // Add click event to navigate to cluster page
     tile.addEventListener('click', () => {
-      window.location.href = `/cluster/${clusterName}`;
+      window.open(`/cluster/${clusterName}`, '_blank');
     });
     
     const titleEl = document.createElement('h3');

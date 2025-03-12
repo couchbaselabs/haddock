@@ -118,30 +118,39 @@ func (s *Server) Start() {
 
 		clusterName := pathParts[2]
 
-		// For now, this is a blank page as per requirements
-		// Later it could be extended to show detailed cluster information
-		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(fmt.Sprintf(`
-		<!DOCTYPE html>
-		<html>
-		<head>
-			<title>Cluster: %s</title>
-			<link rel="stylesheet" href="/static/css/styles.css">
-		</head>
-		<body>
-			<div class="container">
-				<header>
-					<h1>Cluster: %s</h1>
-					<a href="/" class="back-link">← Back to Dashboard</a>
-				</header>
-				<div class="cluster-details">
-					<!-- This page is blank for now as per requirements -->
-					<!-- Future implementation will show detailed cluster information -->
-				</div>
-			</div>
-		</body>
-		</html>
-		`, clusterName, clusterName)))
+		// Check if the cluster exists in our tracked clusters list
+		clusterExists := false
+		for _, name := range s.clusters {
+			if name == clusterName {
+				clusterExists = true
+				break
+			}
+		}
+
+		if !clusterExists {
+			http.NotFound(w, r)
+			return
+		}
+
+		// Render the cluster template with the cluster name
+		tmpl, err := template.ParseFiles("templates/cluster.html")
+		if err != nil {
+			log.Printf("Error parsing cluster template: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		data := struct {
+			Name string
+		}{
+			Name: clusterName,
+		}
+
+		if err := tmpl.Execute(w, data); err != nil {
+			log.Printf("Error executing cluster template: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
 	})
 
 	http.HandleFunc("/ws", s.handleConnections)
