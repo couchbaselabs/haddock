@@ -2,12 +2,11 @@ package events
 
 import (
 	"context"
-	//"fmt"
 	"os"
 	"time"
 
-	"cod/logger"
-	"cod/utils"
+	"cod/internal/logger"
+	"cod/internal/utils"
 
 	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
@@ -16,9 +15,6 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
-	//metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	//"k8s.io/apimachinery/pkg/runtime"
-	//"k8s.io/apimachinery/pkg/watch"
 )
 
 func StartEventWatcher(ctx context.Context, clientset *kubernetes.Clientset, dynamicClient dynamic.Interface, clusterName string, broadcast chan utils.Message) {

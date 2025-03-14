@@ -1,8 +1,8 @@
 package main
 
 import (
-	"cod/logger"
-	"cod/server"
+	"cod/internal/logger"
+	"cod/internal/server"
 )
 
 func main() {

@@ -3,7 +3,7 @@ package utils
 import (
 	"context"
 
-	"cod/logger"
+	"cod/internal/logger"
 
 	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"

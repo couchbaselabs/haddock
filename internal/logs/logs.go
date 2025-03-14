@@ -8,8 +8,8 @@ import (
 	"os"
 	"time"
 
-	"cod/logger"
-	"cod/utils"
+	"cod/internal/logger"
+	"cod/internal/utils"
 
 	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"

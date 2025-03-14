@@ -1,8 +1,6 @@
-// logger/logger.go
 package logger
 
 import (
-	"flag"
 	"os"
 	"strings"
 	"sync"
@@ -12,26 +10,18 @@ import (
 )
 
 var (
-	// Log is the global logger instance.
+	// Log is the global logger instance
 	Log  *zap.Logger
 	once sync.Once
 )
 
-// Declare a command-line flag for the log level.
-var zapLogLevelFlag = flag.String("zap-log-level", "info", "Set the zap log level (debug, info, warn, error, fatal, panic)")
-
-// Init initializes the global logger using the log level from the command-line flag.
+// Init initializes the global logger
 func Init() {
 	once.Do(func() {
-		// If flags haven't been parsed yet, parse them.
-		if !flag.Parsed() {
-			flag.Parse()
-		}
+		// Read log level from environment (set in operator.yaml)
+		logLevel := getLogLevelFromEnv()
 
-		// Parse the flag value to get a zapcore.Level.
-		logLevel := parseLogLevel(*zapLogLevelFlag)
-
-		// Create encoder configuration.
+		// Create encoder config
 		encoderConfig := zapcore.EncoderConfig{
 			TimeKey:        "ts",
 			LevelKey:       "level",
@@ -47,34 +37,44 @@ func Init() {
 			EncodeCaller:   zapcore.ShortCallerEncoder,
 		}
 
-		// Create a new zapcore.Core.
+		// Create core
 		core := zapcore.NewCore(
 			zapcore.NewJSONEncoder(encoderConfig),
 			zapcore.AddSync(os.Stdout),
 			logLevel,
 		)
 
-		// Create the global logger.
+		// Create logger
 		Log = zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
 	})
 }
 
-// parseLogLevel converts the flag string into a zapcore.Level.
-func parseLogLevel(levelStr string) zapcore.Level {
-	switch strings.ToLower(levelStr) {
-	case "debug":
-		return zapcore.DebugLevel
-	case "info":
-		return zapcore.InfoLevel
-	case "warn", "warning":
-		return zapcore.WarnLevel
-	case "error":
-		return zapcore.ErrorLevel
-	case "fatal":
-		return zapcore.FatalLevel
-	case "panic":
-		return zapcore.PanicLevel
-	default:
-		return zapcore.InfoLevel
+// getLogLevelFromEnv reads ZAP_LOG_LEVEL from environment and returns corresponding zapcore.Level
+func getLogLevelFromEnv() zapcore.Level {
+	// Default to info level
+	level := zapcore.InfoLevel
+
+	// Try to get from environment
+	levelStr := strings.ToLower(os.Getenv("ZAP_LOG_LEVEL"))
+	if levelStr == "" {
+		return level
 	}
+
+	// Map string level to zapcore.Level
+	switch levelStr {
+	case "debug":
+		level = zapcore.DebugLevel
+	case "info":
+		level = zapcore.InfoLevel
+	case "warn", "warning":
+		level = zapcore.WarnLevel
+	case "error":
+		level = zapcore.ErrorLevel
+	case "fatal":
+		level = zapcore.FatalLevel
+	case "panic":
+		level = zapcore.PanicLevel
+	}
+
+	return level
 }

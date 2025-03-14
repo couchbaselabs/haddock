@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"cod/logger"
+	"cod/internal/logger"
 
 	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
