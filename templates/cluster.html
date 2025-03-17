@@ -6,6 +6,7 @@
     <title>Cluster: {{.Name}}</title>
     <link rel="stylesheet" href="/static/css/styles.css">
     <!-- External JavaScript file reference -->
+    <script src="https://cdn.jsdelivr.net/npm/fuse.js@6.4.6"></script>
     <script src="/static/js/cluster-details.js" defer></script>
 </head>
 <body>
@@ -25,6 +26,61 @@
             <h2>Cluster Conditions</h2>
             <div id="conditionsContainer" class="conditions-container">
                 <div class="loading-spinner">Loading conditions...</div>
+            </div>
+        </div>
+
+        <div class="monitoring-section">
+            <div class="monitoring-controls">
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="watchEventsCheckbox">
+                        Watch Events
+                    </label>
+                </div>
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="logsCheckbox">
+                        Watch Logs
+                    </label>
+                    <label>
+                        <input type="checkbox" id="followCheckbox" checked>
+                        Follow
+                    </label>
+                    <label>
+                        <input type="checkbox" id="autoScrollCheckbox" checked>
+                        Auto-scroll
+                    </label>
+                </div>
+                <div class="control-group">
+                    <label>Start Time:
+                        <input type="datetime-local" id="startTime">
+                    </label>
+                    <label>End Time:
+                        <input type="datetime-local" id="endTime">
+                    </label>
+                </div>
+            </div>
+
+            <div class="content-section">
+                <div class="events-section">
+                    <div class="search-container">
+                        <input type="text" id="eventsSearch" placeholder="Search events...">
+                        <button id="clearEventsSearch">Clear</button>
+                    </div>
+                    <div id="eventsContainerData" class="events-container">
+                        <div class="events-content"></div>
+                    </div>
+                    <div id="eventsSearchResults" class="search-results"></div>
+                </div>
+
+                <div class="logs-section">
+                    <div class="search-container">
+                        <input type="text" id="logsSearch" placeholder="Search logs...">
+                        <button id="clearLogsSearch">Clear</button>
+                    </div>
+                    <div id="logsContainerData" class="logs-container"></div>
+                    <div id="logsSearchResults" class="search-results"></div>
+                </div>
             </div>
         </div>
     </div>

@@ -211,7 +211,6 @@ function handleLogsSelection(event) {
 
         const request = {
             type: "logs",
-            enabled: true,
             sessionId: currentLogSessionId,
             follow: followCheckbox.checked,
             startTime: rfcStart,
@@ -226,7 +225,6 @@ function handleLogsSelection(event) {
         logsContainerData.innerHTML = ''; // Clear logs container visually
         socket.send(JSON.stringify({
             type: "logs",
-            enabled: false,
             sessionId: null
         }));
     }

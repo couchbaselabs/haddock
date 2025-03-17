@@ -22,7 +22,7 @@ import (
 type Client struct {
 	conn            *websocket.Conn
 	watchEventslist map[string]bool
-	watchLogs       bool
+	logWatcher      context.CancelFunc
 	logSessionId    string
 	eventSessionId  string
 }
@@ -33,10 +33,8 @@ type Server struct {
 	upgrader           websocket.Upgrader
 	clients            map[*Client]bool
 	eventWatchers      map[string]context.CancelFunc
-	logWatcher         context.CancelFunc
 	broadcast          chan utils.Message
-	clientsMutex       sync.Mutex
-	logMutex           sync.Mutex
+	clientsMutex       sync.RWMutex
 	eventWatchersMutex sync.Mutex
 	eventCache         map[string][]utils.Message // Map of clusterName to cached events
 	eventCacheMutex    sync.RWMutex

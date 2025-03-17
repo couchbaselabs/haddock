@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"strings"
 	"time"
 
@@ -10,8 +11,6 @@ import (
 	"cod/internal/events"
 	"cod/internal/logger"
 	"cod/internal/logs"
-
-	"net/http"
 
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -80,7 +79,7 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 	client := &Client{
 		conn:            ws,
 		watchEventslist: make(map[string]bool),
-		watchLogs:       false,
+		logWatcher:      nil,
 		logSessionId:    "",
 		eventSessionId:  "",
 	}
@@ -98,11 +97,15 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	defer func() {
+		if client.logWatcher != nil {
+			client.logWatcher()
+		}
+
 		s.clientsMutex.Lock()
 		delete(s.clients, client)
 		s.clientsMutex.Unlock()
 		s.cleanupEventWatchers()
-		s.checkAndStopLogWatcher()
+
 	}()
 
 	for {
@@ -113,13 +116,13 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var request struct {
-			Type      string   `json:"type"`
-			Clusters  []string `json:"clusters,omitempty"`
-			Enabled   bool     `json:"enabled,omitempty"`
-			SessionID string   `json:"sessionId,omitempty"`
-			StartTime string   `json:"startTime,omitempty"`
-			EndTime   string   `json:"endTime,omitempty"`
-			Follow    bool     `json:"follow,omitempty"`
+			Type        string   `json:"type"`
+			Clusters    []string `json:"clusters,omitempty"`
+			SessionID   string   `json:"sessionId,omitempty"`
+			StartTime   string   `json:"startTime,omitempty"`
+			EndTime     string   `json:"endTime,omitempty"`
+			Follow      bool     `json:"follow,omitempty"`
+			ClusterName string   `json:"clusterName,omitempty"`
 		}
 		if err := json.Unmarshal(message, &request); err != nil {
 			logger.Log.Error("Error unmarshalling message", zap.Error(err))
@@ -143,10 +146,13 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 			s.cleanupEventWatchers()
 
 		case "logs":
-			client.watchLogs = request.Enabled
-			client.logSessionId = request.SessionID
 
-			if request.Enabled {
+			if request.SessionID != "" {
+				if client.logWatcher != nil {
+					client.logWatcher()
+				}
+
+				client.logSessionId = request.SessionID
 				var startTime *time.Time
 				var endTime *time.Time
 
@@ -166,14 +172,17 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 
-				// Start the log watcher with appropriate parameters
 				logger.Log.Debug("Starting log watcher",
 					zap.Any("startTime", startTime),
 					zap.Any("endTime", endTime),
-					zap.Bool("follow", request.Follow))
-				s.startLogWatcher(startTime, endTime, request.Follow)
+					zap.Bool("follow", request.Follow),
+					zap.String("clusterName", request.ClusterName))
+				s.startLogWatcher(client, startTime, endTime, request.Follow, request.ClusterName, client.logSessionId)
+
 			} else {
-				s.checkAndStopLogWatcher()
+				if client.logWatcher != nil {
+					client.logWatcher()
+				}
 			}
 		}
 	}
@@ -224,41 +233,35 @@ func (s *Server) cleanupEventWatchers() {
 	}
 }
 
-func (s *Server) startLogWatcher(startTime, endTime *time.Time, follow bool) {
-	s.logMutex.Lock()
-	defer s.logMutex.Unlock()
-
-	if s.logWatcher != nil {
-		return
-	}
+func (s *Server) startLogWatcher(client *Client, startTime, endTime *time.Time, follow bool, clusterName string, logSessionId string) {
 
 	ctx, cancel := context.WithCancel(context.Background())
-	s.logWatcher = cancel
-	go logs.StartLogWatcher(ctx, s.clientset, s.broadcast, startTime, endTime, follow)
+	client.logWatcher = cancel
+	go logs.StartLogWatcher(ctx, s.clientset, s.broadcast, startTime, endTime, follow, clusterName, logSessionId)
 }
 
-func (s *Server) checkAndStopLogWatcher() {
-	s.clientsMutex.Lock()
-	// Check if any client still wants logs
-	logsNeeded := false
-	for client := range s.clients {
-		if client.watchLogs {
-			logsNeeded = true
-			break
-		}
-	}
-	s.clientsMutex.Unlock()
+// func (s *Server) checkAndStopLogWatcher() {
+// 	s.clientsMutex.Lock()
+// 	// Check if any client still wants logs
+// 	logsNeeded := false
+// 	for client := range s.clients {
+// 		if client.watchLogs {
+// 			logsNeeded = true
+// 			break
+// 		}
+// 	}
+// 	s.clientsMutex.Unlock()
 
-	// If no client needs logs, stop the watcher
-	if !logsNeeded {
-		s.logMutex.Lock()
-		if s.logWatcher != nil {
-			s.logWatcher()
-			s.logWatcher = nil
-		}
-		s.logMutex.Unlock()
-	}
-}
+// 	// If no client needs logs, stop the watcher
+// 	if !logsNeeded {
+// 		s.logMutex.Lock()
+// 		if s.logWatcher != nil {
+// 			s.logWatcher()
+// 			s.logWatcher = nil
+// 		}
+// 		s.logMutex.Unlock()
+// 	}
+// }
 
 func (s *Server) handleMessages() {
 	for {
@@ -275,12 +278,11 @@ func (s *Server) handleMessages() {
 			s.eventCacheMutex.Unlock()
 		}
 
-		s.clientsMutex.Lock()
+		s.clientsMutex.RLock()
 		for client := range s.clients {
 			shouldSend := false
 			if msg.Type == "log" {
-				shouldSend = client.watchLogs
-				msg.SessionID = client.logSessionId
+				shouldSend = client.logSessionId == msg.SessionID
 			} else if msg.Type == "event" {
 				shouldSend = client.watchEventslist[msg.ClusterName]
 				msg.SessionID = client.eventSessionId
@@ -296,7 +298,7 @@ func (s *Server) handleMessages() {
 				}
 			}
 		}
-		s.clientsMutex.Unlock()
+		s.clientsMutex.RUnlock()
 	}
 }
 

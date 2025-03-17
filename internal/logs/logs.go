@@ -17,12 +17,13 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-// LogTimestamp only extracts the timestamp from the log entry
-type LogTimestamp struct {
-	Time time.Time `json:"ts"`
+// LogEntry extracts timestamp and cluster from the log entry
+type LogEntry struct {
+	Time    time.Time `json:"ts"`
+	Cluster string    `json:"cluster,omitempty"`
 }
 
-func StartLogWatcher(ctx context.Context, clientset *kubernetes.Clientset, broadcast chan<- utils.Message, startTime, endTime *time.Time, follow bool) {
+func StartLogWatcher(ctx context.Context, clientset *kubernetes.Clientset, broadcast chan<- utils.Message, startTime, endTime *time.Time, follow bool, clusterName string, logSessionId string) {
 	namespace := os.Getenv("WATCH_NAMESPACE")
 	if namespace == "" {
 		logger.Log.Fatal("WATCH_NAMESPACE environment variable not set")
@@ -75,17 +76,25 @@ func StartLogWatcher(ctx context.Context, clientset *kubernetes.Clientset, broad
 				return
 			}
 
-			// Parse just the timestamp
-			var logTime LogTimestamp
-			if err := json.Unmarshal([]byte(line), &logTime); err != nil {
-				logger.Log.Error("Error parsing log timestamp", zap.Error(err))
+			// Parse the log entry
+			var logEntry LogEntry
+			if err := json.Unmarshal([]byte(line), &logEntry); err != nil {
+				logger.Log.Error("Error parsing log entry", zap.Error(err))
 				continue
 			}
 
 			// Check end time if specified and not following
 			if endTime != nil && !follow {
-				if logTime.Time.After(*endTime) {
+				if logEntry.Time.After(*endTime) {
 					return
+				}
+			}
+
+			// If clusterName is specified, only send logs for that cluster
+			if clusterName != "" {
+				// Only send if the log entry is for the specified cluster, check if namespace + clusterName matches logEntry.Cluster
+				if logEntry.Cluster == "" || logEntry.Cluster != namespace+"/"+clusterName {
+					continue
 				}
 			}
 
@@ -93,8 +102,9 @@ func StartLogWatcher(ctx context.Context, clientset *kubernetes.Clientset, broad
 			case <-ctx.Done():
 				return
 			case broadcast <- utils.Message{
-				Type:    "log",
-				Message: line,
+				Type:      "log",
+				SessionID: logSessionId,
+				Message:   line,
 			}:
 			}
 		}

@@ -845,3 +845,193 @@
         align-items: flex-start;
     }
 }
+
+/* Empty state messages */
+.empty-state-message {
+    padding: 20px;
+    text-align: center;
+    color: #888;
+    font-style: italic;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100px;
+    border: 1px dashed #ccc;
+    border-radius: 5px;
+    margin: 10px 0;
+}
+
+/* Monitoring Section Styles */
+.monitoring-section {
+    background-color: var(--background-light);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: var(--spacing-lg);
+    margin-top: var(--spacing-xl);
+}
+
+.monitoring-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-lg);
+    padding: var(--spacing-md);
+    background-color: var(--background-main);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-lg);
+}
+
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.control-group label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-size: 14px;
+    color: var(--dark-text);
+    cursor: pointer;
+}
+
+.control-group input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.control-group input[type="datetime-local"] {
+    padding: var(--spacing-sm);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+}
+
+/* Content Section Layout */
+.content-section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: var(--spacing-lg);
+    margin-top: var(--spacing-lg);
+}
+
+/* Events and Logs Sections */
+.events-section, .logs-section {
+    background-color: var(--background-light);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 600px;
+    position: relative; /* Add this for absolute positioning of search results */
+}
+
+/* Events and Logs Content */
+.events-container, .logs-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--spacing-md);
+    background-color: var(--background-main);
+    position: relative; /* Add this for proper stacking */
+}
+
+/* Search Results Container */
+.search-results {
+    display: none;
+    position: absolute;
+    top: 60px; /* Height of search container */
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow-y: auto;
+    background-color: var(--background-main);
+    z-index: 10;
+    padding: var(--spacing-md);
+}
+
+.search-results.active {
+    display: block;
+}
+
+/* Hide original container when search is active */
+.events-container.hidden,
+.logs-container.hidden {
+    visibility: hidden; /* Use visibility instead of display none to prevent layout shift */
+}
+
+/* Search Container */
+.search-container {
+    position: relative;
+    z-index: 11;
+    background-color: var(--background-light);
+    padding: var(--spacing-md);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+.search-container input {
+    flex: 1;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    transition: var(--transition);
+}
+
+.search-container button {
+    padding: var(--spacing-sm) var(--spacing-md);
+    background-color: var(--background-light);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--medium-text);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+/* Match Highlighting */
+.match-highlight {
+    background-color: rgba(255, 213, 79, 0.4);
+    border-radius: 2px;
+    padding: 0 2px;
+    margin: 0 -2px;
+    box-shadow: 0 0 0 1px rgba(255, 213, 79, 0.4);
+    transition: var(--transition);
+    position: relative;
+    z-index: 1;
+}
+
+.match-highlight:hover {
+    background-color: rgba(255, 213, 79, 0.6);
+}
+
+/* Loading and Empty States */
+.search-loading, .no-results {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-xl);
+    color: var(--medium-text);
+    font-style: italic;
+    background-color: var(--background-light);
+    border-radius: var(--radius-sm);
+    margin: var(--spacing-md) 0;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .monitoring-controls {
+        flex-direction: column;
+        gap: var(--spacing-md);
+    }
+
+    .control-group {
+        flex-wrap: wrap;
+    }
+
+    .content-section {
+        grid-template-columns: 1fr;
+    }
+}
