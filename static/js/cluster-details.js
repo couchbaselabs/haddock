@@ -413,9 +413,11 @@ function generateSessionId() {
 function highlightMatches(text, matches) {
     if (!matches || !text) return text;
     
+    // Sort matches by indices from end to beginning to avoid offset issues
     const sortedMatches = [...matches].sort((a, b) => b[0] - a[0]);
     let result = text;
     
+    // Process each match from end to beginning
     for (const [start, end] of sortedMatches) {
         const matchedText = result.substring(start, end + 1);
         const highlighted = `<span class="match-highlight">${matchedText}</span>`;
