@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cluster: {{.Name}}</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <!-- External JavaScript file reference -->
+    <script src="/static/js/cluster-details.js" defer></script>
+</head>
+<body>
+    <!-- Hidden element to store cluster name for JavaScript -->
+    <div id="clusterNameHolder" data-name="{{.Name}}" style="display: none;"></div>
+    
+    <div class="container cluster-detail-page">
+        <header>
+            <h1>Cluster: {{.Name}}</h1>
+            <div class="header-actions">
+                <button id="openCouchbaseUI" class="primary-button">Open Couchbase UI</button>
+                <a href="/" class="back-link">← Back to Dashboard</a>
+            </div>
+        </header>
+        
+        <div class="cluster-details">
+            <h2>Cluster Conditions</h2>
+            <div id="conditionsContainer" class="conditions-container">
+                <div class="loading-spinner">Loading conditions...</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html> 

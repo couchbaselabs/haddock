@@ -1,9 +1,13 @@
 // ==================== CONSTANTS AND GLOBALS ======================
 const socket = new WebSocket("ws://" + window.location.host + "/ws");
 let currentLogSessionId = null;
+let currentEventSessionId = null;
 let logFragment = document.createDocumentFragment();
 let batchTimeoutId = null;
-const BATCH_INTERVAL = 500;
+let eventFragments = {}; // Map to store event fragments by cluster name
+let eventBatchTimeoutId = null;
+const LOG_BATCH_INTERVAL = 500; // For logs
+const EVENT_BATCH_INTERVAL = 10; // Faster interval for events
 const SEARCH_DEBOUNCE_DELAY = 300; // Delay in ms for search debounce
 
 // Search data storage
@@ -231,6 +235,13 @@ function handleLogsSelection(event) {
 function handleClusterSelection() {
     const selectedClusters = Array.from(document.querySelectorAll('.cluster-checkbox:checked')).map(cb => cb.value);
     
+    // Generate a new session ID if we have selected clusters
+    if (selectedClusters.length > 0) {
+        currentEventSessionId = generateSessionId();
+    } else {
+        currentEventSessionId = null;
+    }
+    
     // Remove event divs for unselected clusters
     const eventsContainerData = document.getElementById("eventsContainerData");
     const clusterDivs = eventsContainerData.getElementsByClassName('cluster-events');
@@ -243,8 +254,9 @@ function handleClusterSelection() {
     });
 
     socket.send(JSON.stringify({
-        type: "clusters",
-        clusters: selectedClusters
+        type: "clustersevents",
+        clusters: selectedClusters,
+        sessionId: currentEventSessionId
     }));
 }
 
@@ -255,12 +267,18 @@ function handleWebSocketMessage(event) {
             updateClusters(data.clusters);
             break;
         case "event":
-            updateEvents(data);
+            if (data.sessionId === currentEventSessionId) {
+                updateEvents(data);
+            }
             break;
         case "log":
             if (data.sessionId === currentLogSessionId) {
                 updateLogs(data);
             }
+            break;
+        case "clusterConditions":
+            console.log("conditions triggered")
+            renderClusterTiles(data.conditions);
             break;
     }
 }
@@ -449,9 +467,7 @@ function updateEvents(eventData) {
         });
     }
 
-    // Add the event to the UI
-    const eventsContent = clusterDiv.querySelector('.events-content');
-    const autoScrollCheckbox = clusterDiv.querySelector('.events-auto-scroll');
+    // Create an event element
     const eventElement = document.createElement("div");
     eventElement.className = 'event-item';
     eventElement.innerHTML = `
@@ -460,18 +476,17 @@ function updateEvents(eventData) {
         <span class="event-property"><strong>Message:</strong> ${eventData.message}</span>
     `;
     
-    // Remember scroll position if auto-scroll is not checked
-    const shouldScrollToBottom = autoScrollCheckbox.checked;
-    const scrollTop = eventsContent.scrollTop;
+    // Initialize fragment for this cluster if it doesn't exist
+    if (!eventFragments[eventData.clusterName]) {
+        eventFragments[eventData.clusterName] = document.createDocumentFragment();
+    }
     
-    // Add the event
-    eventsContent.appendChild(eventElement);
+    // Add the event to the fragment
+    eventFragments[eventData.clusterName].appendChild(eventElement);
     
-    // Scroll accordingly
-    if (shouldScrollToBottom) {
-        eventsContent.scrollTop = eventsContent.scrollHeight;
-    } else {
-        eventsContent.scrollTop = scrollTop;
+    // If we don't have a timer running yet, start one
+    if (!eventBatchTimeoutId) {
+        eventBatchTimeoutId = setTimeout(flushEventBatches, EVENT_BATCH_INTERVAL);
     }
 }
 
@@ -495,7 +510,7 @@ function updateLogs(logData) {
     
     // If we don't have a timer running yet, start one
     if (!batchTimeoutId) {
-        batchTimeoutId = setTimeout(flushLogBatch, BATCH_INTERVAL);
+        batchTimeoutId = setTimeout(flushLogBatch, LOG_BATCH_INTERVAL);
     }
 }
 
@@ -529,6 +544,43 @@ function flushLogBatch() {
     batchTimeoutId = null;
 }
 
+// Function to flush all event batches
+function flushEventBatches() {
+    // Process each cluster's event fragment
+    for (const clusterName in eventFragments) {
+        if (eventFragments[clusterName].children.length > 0) {
+            const clusterDiv = document.getElementById(`events-${clusterName}`);
+            if (clusterDiv) {
+                const eventsContent = clusterDiv.querySelector('.events-content');
+                const autoScrollCheckbox = clusterDiv.querySelector('.events-auto-scroll');
+                
+                // If auto-scroll is checked, we'll always scroll to bottom after adding events
+                const shouldScrollToBottom = autoScrollCheckbox.checked;
+                
+                // If auto-scroll is not checked, remember current scroll position to maintain it
+                const scrollTop = eventsContent.scrollTop;
+                
+                // Append all entries at once
+                eventsContent.appendChild(eventFragments[clusterName]);
+                
+                if (shouldScrollToBottom) {
+                    // Scroll to bottom if auto-scroll is enabled
+                    eventsContent.scrollTop = eventsContent.scrollHeight;
+                } else {
+                    // Maintain scroll position if auto-scroll is disabled
+                    eventsContent.scrollTop = scrollTop;
+                }
+                
+                // Create a new empty fragment for the next batch
+                eventFragments[clusterName] = document.createDocumentFragment();
+            }
+        }
+    }
+    
+    // Clear the timeout
+    eventBatchTimeoutId = null;
+}
+
 // ==================== UTILITY FUNCTIONS ====================
 function generateSessionId() {
     return Date.now().toString() + window.crypto.getRandomValues(new Uint32Array(1))[0];
@@ -550,4 +602,168 @@ function highlightMatches(text, matches) {
     }
     
     return result;
+}
+
+// Function to determine the tile color based on status and type
+function getTileColor(status, type) {
+  // Unknown status takes precedence
+  if (status === 'Unknown') {
+    return 'grey';
+  }
+
+  // Active conditions (status True)
+  if (status === 'True') {
+    switch (type) {
+      // Positive conditions
+      case 'Available':
+      case 'Balanced':
+      case 'AutoscaleReady':
+      case 'Synchronized':
+        return 'green';
+
+      // Active error condition is bad
+      case 'Error':
+        return 'red';
+
+      // Transitional/in-progress conditions
+      case 'Scaling':
+      case 'ScalingUp':
+      case 'ScalingDown':
+      case 'Upgrading':
+      case 'WaitingBetweenMigrations':
+      case 'Migrating':
+      case 'Rebalancing':
+      case 'ExpandingVolume':
+      case 'BucketMigrating':
+        return 'orange';
+
+      // Special cases
+      case 'ManageConfig':
+        return 'blue';
+      case 'Hibernating':
+        return 'purple';
+
+      default:
+        return 'grey';  // fallback for any unexpected type
+    }
+  }
+  
+  // Inactive conditions (status False)
+  if (status === 'False') {
+    switch (type) {
+      // When healthy conditions are false, that's bad
+      case 'Available':
+      case 'Balanced':
+      case 'AutoscaleReady':
+      case 'Synchronized':
+        return 'red';
+
+      // For an inactive error, use grey to indicate neutrality instead of green
+      case 'Error':
+        return 'grey';
+
+      // For other cases, a neutral color can be used
+      default:
+        return 'grey';
+    }
+  }
+}
+
+// Function to determine the overall tile color based on conditions
+function getOverallTileColor(conditions) {
+  if (!conditions || conditions.length === 0) {
+    return 'grey';
+  }
+  
+  // Priority order for overall status
+  const redCondition = conditions.find(c => 
+    getTileColor(c.status, c.type) === 'red');
+  if (redCondition) return 'red';
+  
+  const orangeCondition = conditions.find(c => 
+    getTileColor(c.status, c.type) === 'orange');
+  if (orangeCondition) return 'orange';
+  
+  const purpleCondition = conditions.find(c => 
+    getTileColor(c.status, c.type) === 'purple');
+  if (purpleCondition) return 'purple';
+  
+  const blueCondition = conditions.find(c => 
+    getTileColor(c.status, c.type) === 'blue');
+  if (blueCondition) return 'blue';
+  
+  const greenCondition = conditions.find(c => 
+    getTileColor(c.status, c.type) === 'green');
+  if (greenCondition) return 'green';
+  
+  return 'grey';
+}
+
+// Function to render cluster tiles
+function renderClusterTiles(clusterConditions) {
+  const container = document.getElementById('clusterTilesContainer');
+  if (!container || !clusterConditions) return;
+  
+  container.innerHTML = '';
+  
+  Object.keys(clusterConditions).forEach(clusterName => {
+    const conditions = clusterConditions[clusterName];
+    const overallColor = getOverallTileColor(conditions);
+    
+    const tile = document.createElement('div');
+    tile.className = `cluster-tile tile-${overallColor}`;
+    tile.dataset.clusterName = clusterName;
+    
+    // Add click event to navigate to cluster page
+    tile.addEventListener('click', () => {
+      window.open(`/cluster/${clusterName}`, '_blank');
+    });
+    
+    const titleEl = document.createElement('h3');
+    titleEl.textContent = clusterName;
+    tile.appendChild(titleEl);
+    
+    const conditionsList = document.createElement('ul');
+    conditionsList.className = 'conditions-list';
+    
+    // Sort conditions by priority (error conditions first, then in-progress, then others)
+    const sortedConditions = [...conditions].sort((a, b) => {
+      const colorA = getTileColor(a.status, a.type);
+      const colorB = getTileColor(b.status, b.type);
+      
+      const priority = {
+        'red': 1,
+        'orange': 2,
+        'purple': 3,
+        'blue': 4,
+        'green': 5,
+        'grey': 6
+      };
+      
+      return priority[colorA] - priority[colorB];
+    });
+    
+    // Display up to 5 most important conditions
+    sortedConditions.slice(0, 5).forEach(condition => {
+      const conditionColor = getTileColor(condition.status, condition.type);
+      
+      const conditionItem = document.createElement('li');
+      conditionItem.className = 'condition-item';
+      
+      const conditionType = document.createElement('span');
+      conditionType.className = 'condition-type';
+      conditionType.textContent = condition.type;
+      
+      const conditionStatus = document.createElement('span');
+      conditionStatus.className = `condition-status status-${conditionColor}`;
+      conditionStatus.textContent = condition.status;
+      
+      conditionItem.appendChild(conditionType);
+      conditionItem.appendChild(conditionStatus);
+      conditionsList.appendChild(conditionItem);
+    });
+    
+    tile.appendChild(conditionsList);
+    container.appendChild(tile);
+  });
 }
