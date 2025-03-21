@@ -2,10 +2,8 @@ package server
 
 import (
 	"context"
-	"html/template"
 	"net/http"
 	"os"
-	"strings"
 	"sync"
 
 	"cod/internal/cluster"
@@ -83,68 +81,14 @@ func (s *Server) Start() {
 	fs := http.FileServer(http.Dir("static"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// First check if this is an API request
-		if s.isAPIRequest(r) {
-			s.handleCouchbaseAPIProxy(w, r)
-			return
-		}
-
-		// Otherwise serve the dashboard
-		tmpl, _ := template.ParseFiles("templates/index.html")
-		tmpl.Execute(w, s.clusters)
-	})
-
-	// Add a handler for cluster-specific pages
-	http.HandleFunc("/cluster/", func(w http.ResponseWriter, r *http.Request) {
-		// Extract the cluster name from the URL path
-		pathParts := strings.Split(r.URL.Path, "/")
-		if len(pathParts) < 3 {
-			http.NotFound(w, r)
-			return
-		}
-
-		clusterName := pathParts[2]
-
-		// Check if the cluster exists in our tracked clusters list
-		clusterExists := false
-		for _, name := range s.clusters {
-			if name == clusterName {
-				clusterExists = true
-				break
-			}
-		}
-
-		if !clusterExists {
-			http.NotFound(w, r)
-			return
-		}
-
-		// Render the cluster template with the cluster name
-		tmpl, err := template.ParseFiles("templates/cluster.html")
-		if err != nil {
-			logger.Log.Error("Error parsing cluster template", zap.Error(err))
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-
-		data := struct {
-			Name string
-		}{
-			Name: clusterName,
-		}
-
-		if err := tmpl.Execute(w, data); err != nil {
-			logger.Log.Error("Error executing cluster template", zap.Error(err))
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-	})
-
+	// Use the extracted handler functions
+	http.HandleFunc("/", s.handleRootRoute)
+	http.HandleFunc("/cluster/", s.handleClusterRoute)
 	http.HandleFunc("/ws", s.handleConnections)
-
 	// Add a handler for the Couchbase UI proxy - maintain trailing slash to ensure path consistency
 	http.HandleFunc("/cui/", s.handleCouchbaseUIProxy)
+	// Add the metrics endpoint
+	http.HandleFunc("/metrics", s.handleMetricsEndpoint)
 
 	go s.handleMessages()
 

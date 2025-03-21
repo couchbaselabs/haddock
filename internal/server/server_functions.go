@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"html/template"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -12,6 +14,8 @@ import (
 	"cod/internal/logger"
 	"cod/internal/logs"
 
+	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/prom2json"
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/tools/cache"
@@ -239,29 +243,6 @@ func (s *Server) startLogWatcher(client *Client, startTime, endTime *time.Time, 
 	client.logWatcher = cancel
 	go logs.StartLogWatcher(ctx, s.clientset, s.broadcast, startTime, endTime, follow, clusterName, logSessionId)
 }
-
-// func (s *Server) checkAndStopLogWatcher() {
-// 	s.clientsMutex.Lock()
-// 	// Check if any client still wants logs
-// 	logsNeeded := false
-// 	for client := range s.clients {
-// 		if client.watchLogs {
-// 			logsNeeded = true
-// 			break
-// 		}
-// 	}
-// 	s.clientsMutex.Unlock()
-
-// 	// If no client needs logs, stop the watcher
-// 	if !logsNeeded {
-// 		s.logMutex.Lock()
-// 		if s.logWatcher != nil {
-// 			s.logWatcher()
-// 			s.logWatcher = nil
-// 		}
-// 		s.logMutex.Unlock()
-// 	}
-// }
 
 func (s *Server) handleMessages() {
 	for {
@@ -501,4 +482,127 @@ func (s *Server) sendCachedEvents(client *Client, clusterName string) {
 			return
 		}
 	}
+}
+
+// handleRootRoute handles the root route, serving either API requests or the dashboard
+func (s *Server) handleRootRoute(w http.ResponseWriter, r *http.Request) {
+	// First check if this is an API request
+	if s.isAPIRequest(r) {
+		s.handleCouchbaseAPIProxy(w, r)
+		return
+	}
+
+	// Otherwise serve the dashboard
+	tmpl, _ := template.ParseFiles("templates/index.html")
+	tmpl.Execute(w, s.clusters)
+}
+
+// handleClusterRoute handles the cluster-specific pages
+func (s *Server) handleClusterRoute(w http.ResponseWriter, r *http.Request) {
+	// Extract the cluster name from the URL path
+	pathParts := strings.Split(r.URL.Path, "/")
+	if len(pathParts) < 3 {
+		http.NotFound(w, r)
+		return
+	}
+
+	clusterName := pathParts[2]
+
+	// Check if the cluster exists in our tracked clusters list
+	clusterExists := false
+	for _, name := range s.clusters {
+		if name == clusterName {
+			clusterExists = true
+			break
+		}
+	}
+
+	if !clusterExists {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Render the cluster template with the cluster name
+	tmpl, err := template.ParseFiles("templates/cluster.html")
+	if err != nil {
+		logger.Log.Error("Error parsing cluster template", zap.Error(err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		Name string
+	}{
+		Name: clusterName,
+	}
+
+	if err := tmpl.Execute(w, data); err != nil {
+		logger.Log.Error("Error executing cluster template", zap.Error(err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleMetricsEndpoint proxies requests to the Prometheus metrics endpoint
+func (s *Server) handleMetricsEndpoint(w http.ResponseWriter, r *http.Request) {
+	// Make a request to the local Prometheus metrics endpoint
+	resp, err := http.Get("http://localhost:8383/metrics")
+	if err != nil {
+		logger.Log.Error("Failed to get metrics from local endpoint", zap.Error(err))
+		http.Error(w, "Failed to fetch metrics: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Check if the response status code is successful
+	if resp.StatusCode != http.StatusOK {
+		logger.Log.Error("Received non-OK status code from metrics endpoint",
+			zap.Int("statusCode", resp.StatusCode))
+		http.Error(w, "Failed to fetch metrics: received status "+resp.Status, resp.StatusCode)
+		return
+	}
+
+	// If the client wants JSON (which is the default for our frontend), use prom2json
+	if r.Header.Get("Accept") == "application/json" {
+		w.Header().Set("Content-Type", "application/json")
+
+		// Create a prom2json handler to convert the metrics
+		mfChan := make(chan *dto.MetricFamily, 1024)
+
+		// Create a reader from the response body
+		err := prom2json.ParseReader(resp.Body, mfChan)
+		if err != nil {
+			logger.Log.Error("Failed to parse metrics", zap.Error(err))
+			http.Error(w, "Failed to parse metrics: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Convert the metrics channel to prom2json format
+		var result []*prom2json.Family
+		for mf := range mfChan {
+			result = append(result, prom2json.NewFamily(mf))
+		}
+
+		// Marshal to JSON
+		jsonData, err := json.Marshal(result)
+		if err != nil {
+			logger.Log.Error("Failed to marshal metrics to JSON", zap.Error(err))
+			http.Error(w, "Failed to convert metrics to JSON: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Write(jsonData)
+		return
+	}
+
+	// For text format requests, just return the raw Prometheus format
+	w.Header().Set("Content-Type", "text/plain")
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		logger.Log.Error("Failed to read metrics response", zap.Error(err))
+		http.Error(w, "Failed to read metrics: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(body)
 }
