@@ -1,18 +1,17 @@
 // Handle SPA navigation in the dashboard
 document.addEventListener('DOMContentLoaded', () => {
-    // Check URL hash on initial load to set the correct page
-    const hash = window.location.hash.substring(1);
-    
-    // Only default to dashboard if no hash is present
-    const initialPage = hash || 'dashboard';
-    
-    // Initialize navigation
+    // Initialize navigation and sidebar first
     initNavigation();
-    
-    // Set up sidebar toggle
     initSidebarToggle();
     
-    // Load correct page without flashing
+    // Get the initial page from hash or default to dashboard
+    const hash = window.location.hash.substring(1);
+    const initialPage = hash || 'dashboard';
+    
+    // Update active state before showing the page to prevent flash
+    updateActiveNavItem(initialPage);
+    
+    // Show the correct page
     showPage(initialPage);
     
     // Listen for hash changes
@@ -29,13 +28,15 @@ function initNavigation() {
     navItems.forEach(item => {
         item.addEventListener('click', function(e) {
             const page = this.getAttribute('data-page');
-            showPage(page);
+            
+            // Update active state first
+            updateActiveNavItem(page);
             
             // Update hash without triggering another hashchange event
             history.replaceState(null, null, `#${page}`);
             
-            // Update active state
-            updateActiveNavItem(page);
+            // Show the page
+            showPage(page);
         });
     });
 }
@@ -45,7 +46,6 @@ function initSidebarToggle() {
     const sidebarToggle = document.getElementById('sidebarToggle');
     const sidebar = document.querySelector('.sidebar');
     const mainWrapper = document.querySelector('.main-wrapper');
-    const toggleIcon = sidebarToggle.querySelector('.toggle-icon');
     
     // Check for stored sidebar state
     const isSidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
@@ -54,7 +54,6 @@ function initSidebarToggle() {
     if (isSidebarCollapsed) {
         sidebar.classList.add('collapsed');
         mainWrapper.classList.add('expanded');
-        // The rotation will be handled by CSS
     }
     
     // Add click handler
@@ -69,23 +68,29 @@ function initSidebarToggle() {
 
 // Show the selected page and hide others
 function showPage(pageId) {
+    // Hide all pages first
     document.querySelectorAll('.page-content').forEach(page => {
         page.classList.add('hidden');
     });
     
     // Find and show the requested page
     const targetPage = document.getElementById(`${pageId}-page`);
-    if (targetPage) {
-        targetPage.classList.remove('hidden');
+    if (!targetPage) {
+        return;
     }
     
-    // Update active state in navigation
-    updateActiveNavItem(pageId);
+    targetPage.classList.remove('hidden');
     
-    // Handle special pages that need initialization
-    if (pageId === 'metrics' && typeof startMetricsRefresh === 'function') {
-        startMetricsRefresh();
-    } else if (pageId !== 'metrics' && typeof stopMetricsRefresh === 'function') {
+    // Handle metrics page initialization
+    if (pageId === 'metrics') {
+        if (typeof startMetricsRefresh === 'function') {
+            startMetricsRefresh();
+        }
+        return;
+    }
+    
+    // Stop metrics refresh for non-metrics pages
+    if (typeof stopMetricsRefresh === 'function') {
         stopMetricsRefresh();
     }
 }

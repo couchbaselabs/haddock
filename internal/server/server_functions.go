@@ -73,10 +73,16 @@ func (s *Server) isAPIRequest(r *http.Request) bool {
 
 // this function is a goroutine that handles the websocket connection
 func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
-	logger.Log.Debug("Handling websocket connection")
+	remoteAddr := r.RemoteAddr
+	userAgent := r.UserAgent()
+
 	ws, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		logger.Log.Fatal("Failed to upgrade to websocket", zap.Error(err))
+		logger.Log.Error("Failed to upgrade to websocket",
+			zap.Error(err),
+			zap.String("remoteAddr", remoteAddr))
+		http.Error(w, "WebSocket upgrade failed", http.StatusInternalServerError)
+		return
 	}
 	defer ws.Close()
 
@@ -90,32 +96,53 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 
 	s.clientsMutex.Lock()
 	s.clients[client] = true
+	clientCount := len(s.clients)
 	s.clientsMutex.Unlock()
+
+	logger.Log.Info("Client connected",
+		zap.String("remoteAddr", remoteAddr),
+		zap.String("userAgent", userAgent),
+		zap.Int("activeClients", clientCount))
 
 	// Immediately load and broadcast cluster conditions for the new client
 	go func() {
 		err := cluster.LoadClusterConditions(s.dynamicClient, s.updateConditions)
 		if err != nil {
-			logger.Log.Error("Error loading cluster conditions", zap.Error(err))
+			logger.Log.Error("Failed to load cluster conditions for new client",
+				zap.Error(err),
+				zap.String("remoteAddr", remoteAddr))
 		}
 	}()
 
 	defer func() {
 		if client.logWatcher != nil {
 			client.logWatcher()
+			logger.Log.Debug("Client log watcher canceled",
+				zap.String("sessionId", client.logSessionId),
+				zap.String("remoteAddr", remoteAddr))
 		}
 
 		s.clientsMutex.Lock()
 		delete(s.clients, client)
+		remainingClients := len(s.clients)
 		s.clientsMutex.Unlock()
-		s.cleanupEventWatchers()
 
+		logger.Log.Info("Client disconnected",
+			zap.String("remoteAddr", remoteAddr),
+			zap.Int("remainingClients", remainingClients))
+
+		s.cleanupEventWatchers()
 	}()
 
 	for {
 		_, message, err := ws.ReadMessage()
 		if err != nil {
-			logger.Log.Error("Error reading message", zap.Error(err))
+			// Don't log normal websocket close as an error
+			if !strings.Contains(err.Error(), "websocket: close") {
+				logger.Log.Info("WebSocket connection closed",
+					zap.Error(err),
+					zap.String("remoteAddr", remoteAddr))
+			}
 			break
 		}
 
@@ -129,7 +156,10 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 			ClusterName string   `json:"clusterName,omitempty"`
 		}
 		if err := json.Unmarshal(message, &request); err != nil {
-			logger.Log.Error("Error unmarshalling message", zap.Error(err))
+			logger.Log.Error("Failed to parse client message",
+				zap.Error(err),
+				zap.String("rawMessage", string(message)),
+				zap.String("remoteAddr", remoteAddr))
 			continue
 		}
 
@@ -137,6 +167,11 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 		case "clustersevents":
 			// Set the event session ID
 			client.eventSessionId = request.SessionID
+
+			logger.Log.Debug("Client requested cluster events",
+				zap.String("sessionId", request.SessionID),
+				zap.Strings("clusters", request.Clusters),
+				zap.String("remoteAddr", remoteAddr))
 
 			// Update the watched clusters
 			client.watchEventslist = make(map[string]bool)
@@ -150,10 +185,13 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 			s.cleanupEventWatchers()
 
 		case "logs":
-
 			if request.SessionID != "" {
+				// Cancel existing log watcher if any
 				if client.logWatcher != nil {
 					client.logWatcher()
+					logger.Log.Debug("Previous log watcher canceled",
+						zap.String("prevSessionId", client.logSessionId),
+						zap.String("newSessionId", request.SessionID))
 				}
 
 				client.logSessionId = request.SessionID
@@ -165,6 +203,11 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 					t, err := time.Parse(time.RFC3339, request.StartTime)
 					if err == nil {
 						startTime = &t
+					} else {
+						logger.Log.Warn("Invalid start time format",
+							zap.String("startTime", request.StartTime),
+							zap.String("sessionId", request.SessionID),
+							zap.String("remoteAddr", remoteAddr))
 					}
 				}
 
@@ -173,19 +216,23 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 					t, err := time.Parse(time.RFC3339, request.EndTime)
 					if err == nil {
 						endTime = &t
+					} else {
+						logger.Log.Warn("Invalid end time format",
+							zap.String("endTime", request.EndTime),
+							zap.String("sessionId", request.SessionID),
+							zap.String("remoteAddr", remoteAddr))
 					}
 				}
 
-				logger.Log.Debug("Starting log watcher",
-					zap.Any("startTime", startTime),
-					zap.Any("endTime", endTime),
-					zap.Bool("follow", request.Follow),
-					zap.String("clusterName", request.ClusterName))
 				s.startLogWatcher(client, startTime, endTime, request.Follow, request.ClusterName, client.logSessionId)
-
 			} else {
+				// Stop log watcher if session ID is empty
 				if client.logWatcher != nil {
 					client.logWatcher()
+					logger.Log.Debug("Log watcher stopped",
+						zap.String("sessionId", client.logSessionId),
+						zap.String("remoteAddr", remoteAddr))
+					client.logSessionId = ""
 				}
 			}
 		}
@@ -197,11 +244,19 @@ func (s *Server) startWatcher(clusterName string) {
 	defer s.eventWatchersMutex.Unlock()
 
 	if _, exists := s.eventWatchers[clusterName]; exists {
+		logger.Log.Debug("Event watcher already exists for cluster",
+			zap.String("cluster", clusterName))
 		return
 	}
 
 	// Load initial events into the cache
 	initialEvents := events.GetInitialEvents(s.clientset, s.dynamicClient, clusterName)
+	eventCount := len(initialEvents)
+
+	logger.Log.Info("Starting event watcher for cluster",
+		zap.String("cluster", clusterName),
+		zap.Int("initialEventCount", eventCount))
+
 	s.eventCacheMutex.Lock()
 	s.eventCache[clusterName] = initialEvents
 	s.eventCacheMutex.Unlock()
@@ -217,6 +272,7 @@ func (s *Server) cleanupEventWatchers() {
 	s.eventWatchersMutex.Lock()
 	defer s.eventWatchersMutex.Unlock()
 
+	// Build a map of currently active clusters from clients
 	activeClusters := make(map[string]bool)
 	s.clientsMutex.Lock()
 	for client := range s.clients {
@@ -226,18 +282,59 @@ func (s *Server) cleanupEventWatchers() {
 	}
 	s.clientsMutex.Unlock()
 
+	initialWatcherCount := len(s.eventWatchers)
+	removedCount := 0
+
+	// Remove watchers for clusters with no active clients
 	for cluster, cancel := range s.eventWatchers {
 		if !activeClusters[cluster] {
 			cancel()
 			delete(s.eventWatchers, cluster)
+
+			// Also clean up cached events
 			s.eventCacheMutex.Lock()
-			delete(s.eventCache, cluster)
+			cachedEventCount := 0
+			if events, exists := s.eventCache[cluster]; exists {
+				cachedEventCount = len(events)
+				delete(s.eventCache, cluster)
+			}
 			s.eventCacheMutex.Unlock()
+
+			logger.Log.Info("Removed event watcher for inactive cluster",
+				zap.String("cluster", cluster),
+				zap.Int("cachedEventsRemoved", cachedEventCount))
+
+			removedCount++
 		}
+	}
+
+	if removedCount > 0 {
+		logger.Log.Info("Cleaned up unused event watchers",
+			zap.Int("removedWatchers", removedCount),
+			zap.Int("initialWatcherCount", initialWatcherCount),
+			zap.Int("remainingWatchers", len(s.eventWatchers)))
+	} else if initialWatcherCount > 0 {
+		logger.Log.Debug("No event watchers to clean up",
+			zap.Int("activeWatchers", initialWatcherCount))
 	}
 }
 
 func (s *Server) startLogWatcher(client *Client, startTime, endTime *time.Time, follow bool, clusterName string, logSessionId string) {
+	logContext := []zap.Field{
+		zap.String("sessionId", logSessionId),
+		zap.String("clusterName", clusterName),
+		zap.Bool("follow", follow),
+	}
+
+	if startTime != nil {
+		logContext = append(logContext, zap.Time("startTime", *startTime))
+	}
+
+	if endTime != nil {
+		logContext = append(logContext, zap.Time("endTime", *endTime))
+	}
+
+	logger.Log.Info("Starting log watcher for client", logContext...)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	client.logWatcher = cancel
@@ -245,41 +342,89 @@ func (s *Server) startLogWatcher(client *Client, startTime, endTime *time.Time, 
 }
 
 func (s *Server) handleMessages() {
+	logger.Log.Info("Starting message handler")
+
 	for {
 		msg := <-s.broadcast
+		messageType := msg.Type
+		clusterName := msg.ClusterName
+
+		// DEBUG logs only for routine operations where details are needed for troubleshooting
+		// High-volume message types like metrics and logs should be logged at DEBUG level or not at all
+		if messageType != "metrics" && messageType != "logs" && messageType != "event" {
+			logger.Log.Debug("Processing message",
+				zap.String("type", messageType),
+				zap.String("cluster", clusterName))
+		}
 
 		// Cache events
-		if msg.Type == "event" {
+		if messageType == "event" {
 			s.eventCacheMutex.Lock()
-			clusterEvents := s.eventCache[msg.ClusterName]
+			clusterEvents := s.eventCache[clusterName]
 			if len(clusterEvents) >= 1000 { // Limit cache size
 				clusterEvents = clusterEvents[1:] // Remove oldest event
 			}
-			s.eventCache[msg.ClusterName] = append(clusterEvents, msg)
+			s.eventCache[clusterName] = append(clusterEvents, msg)
 			s.eventCacheMutex.Unlock()
 		}
 
 		s.clientsMutex.RLock()
+		clientCount := len(s.clients)
+		sentCount := 0
+		failedCount := 0
+
 		for client := range s.clients {
 			shouldSend := false
-			if msg.Type == "log" {
+			if messageType == "log" {
 				shouldSend = client.logSessionId == msg.SessionID
-			} else if msg.Type == "event" {
-				shouldSend = client.watchEventslist[msg.ClusterName]
+			} else if messageType == "event" {
+				shouldSend = client.watchEventslist[clusterName]
 				msg.SessionID = client.eventSessionId
 			} else {
-				shouldSend = client.watchEventslist[msg.ClusterName]
+				shouldSend = client.watchEventslist[clusterName]
 			}
 
 			if shouldSend {
 				err := client.conn.WriteJSON(msg)
 				if err != nil {
+					failedCount++
+					// Only log high-volume message failures at DEBUG level
+					if messageType == "metrics" || messageType == "logs" {
+						logger.Log.Debug("Failed to send message to client",
+							zap.Error(err),
+							zap.String("type", messageType),
+							zap.String("messageKind", msg.Kind))
+					} else {
+						logger.Log.Warn("Failed to send message to client",
+							zap.Error(err),
+							zap.String("type", messageType),
+							zap.String("cluster", clusterName),
+							zap.String("messageKind", msg.Kind))
+					}
 					client.conn.Close()
 					delete(s.clients, client)
+				} else {
+					sentCount++
 				}
 			}
 		}
 		s.clientsMutex.RUnlock()
+
+		// Only log message broadcast summaries for non-high-volume message types
+		// or if there were failures
+		if (messageType != "metrics" && messageType != "logs" && sentCount > 0) || failedCount > 0 {
+			logLevel := logger.Log.Debug
+			if failedCount > 0 {
+				logLevel = logger.Log.Info
+			}
+
+			logLevel("Message broadcast summary",
+				zap.String("type", messageType),
+				zap.String("cluster", clusterName),
+				zap.Int("sentTo", sentCount),
+				zap.Int("failed", failedCount),
+				zap.Int("totalClients", clientCount))
+		}
 	}
 }
 
@@ -382,16 +527,38 @@ func (s *Server) broadcastClusters() {
 	s.clientsMutex.Lock()
 	defer s.clientsMutex.Unlock()
 
+	clientCount := len(s.clients)
+	if clientCount == 0 {
+		// No need to attempt broadcast when there are no clients
+		return
+	}
+
+	failedCount := 0
 	for client := range s.clients {
 		err := client.conn.WriteJSON(map[string]interface{}{
 			"type":     "clusters",
 			"clusters": s.clusters,
 		})
 		if err != nil {
-			logger.Log.Error("Error sending cluster update", zap.Error(err))
+			failedCount++
+			logger.Log.Warn("Failed to send cluster list update to client",
+				zap.Error(err),
+				zap.String("errorType", err.Error()))
 			client.conn.Close()
 			delete(s.clients, client)
 		}
+	}
+
+	// Log results with appropriate level based on success/failure
+	if failedCount > 0 {
+		logger.Log.Info("Cluster list broadcast completed with errors",
+			zap.Int("totalClients", clientCount),
+			zap.Int("failedClients", failedCount),
+			zap.Int("clusterCount", len(s.clusters)))
+	} else {
+		logger.Log.Debug("Cluster list broadcast completed successfully",
+			zap.Int("clients", clientCount),
+			zap.Int("clusterCount", len(s.clusters)))
 	}
 }
 
@@ -399,51 +566,66 @@ func (s *Server) broadcastClusters() {
 func (s *Server) updateConditions(obj interface{}) {
 	logger.Log.Debug("updateConditions called with object")
 
-	if obj != nil {
-		unstructuredObj, ok := obj.(*unstructured.Unstructured)
-		if ok {
-			clusterName := unstructuredObj.GetName()
-			logger.Log.Debug("Processing conditions for cluster", zap.String("cluster", clusterName))
+	if obj == nil {
+		return
+	}
 
-			// Always ensure the cluster has an entry in the conditions map
-			if _, exists := s.clusterConditions[clusterName]; !exists {
-				s.clusterConditions[clusterName] = []map[string]interface{}{}
-				logger.Log.Debug("Initialized empty conditions for cluster", zap.String("cluster", clusterName))
-			}
+	unstructuredObj, ok := obj.(*unstructured.Unstructured)
+	if !ok {
+		return
+	}
 
-			// Extract conditions from the object if available
-			status, found, err := unstructured.NestedMap(unstructuredObj.Object, "status")
-			if err != nil {
-				logger.Log.Error("Error getting status", zap.Error(err))
-			} else if found {
-				conditions, found, err := unstructured.NestedSlice(status, "conditions")
-				if err != nil {
-					logger.Log.Error("Error getting conditions", zap.Error(err))
-				} else if found && len(conditions) > 0 {
-					var conditionsList []map[string]interface{}
-					for _, condition := range conditions {
-						if condMap, ok := condition.(map[string]interface{}); ok {
-							conditionsList = append(conditionsList, condMap)
-						}
-					}
+	clusterName := unstructuredObj.GetName()
+	logger.Log.Debug("Processing conditions for cluster", zap.String("cluster", clusterName))
 
-					// Only update if we found actual conditions
-					if len(conditionsList) > 0 {
-						s.clusterConditions[clusterName] = conditionsList
-						logger.Log.Debug("Updated conditions for cluster", zap.String("cluster", clusterName))
-					}
-				} else {
-					logger.Log.Debug("No conditions found in status for cluster", zap.String("cluster", clusterName))
-				}
-			} else {
-				logger.Log.Debug("No status found in object for cluster", zap.String("cluster", clusterName))
-			}
+	// Always ensure the cluster has an entry in the conditions map
+	if _, exists := s.clusterConditions[clusterName]; !exists {
+		s.clusterConditions[clusterName] = []map[string]interface{}{}
+		logger.Log.Debug("Initialized empty conditions for cluster", zap.String("cluster", clusterName))
+	}
 
-			// Always broadcast the conditions to all connected clients
-			// This ensures the UI updates even when there are no conditions yet
-			s.broadcastConditions()
+	// Extract conditions from the object if available
+	status, found, err := unstructured.NestedMap(unstructuredObj.Object, "status")
+	if err != nil {
+		logger.Log.Error("Error getting status", zap.Error(err))
+		s.broadcastConditions()
+		return
+	}
+
+	if !found {
+		logger.Log.Debug("No status found in object for cluster", zap.String("cluster", clusterName))
+		s.broadcastConditions()
+		return
+	}
+
+	conditions, found, err := unstructured.NestedSlice(status, "conditions")
+	if err != nil {
+		logger.Log.Error("Error getting conditions", zap.Error(err))
+		s.broadcastConditions()
+		return
+	}
+
+	if !found || len(conditions) == 0 {
+		logger.Log.Debug("No conditions found in status for cluster", zap.String("cluster", clusterName))
+		s.broadcastConditions()
+		return
+	}
+
+	var conditionsList []map[string]interface{}
+	for _, condition := range conditions {
+		if condMap, ok := condition.(map[string]interface{}); ok {
+			conditionsList = append(conditionsList, condMap)
 		}
 	}
+
+	// Only update if we found actual conditions
+	if len(conditionsList) > 0 {
+		s.clusterConditions[clusterName] = conditionsList
+		logger.Log.Debug("Updated conditions for cluster", zap.String("cluster", clusterName))
+	}
+
+	// Always broadcast the conditions to all connected clients
+	s.broadcastConditions()
 }
 
 // Helper function to broadcast the current conditions to all clients
@@ -451,16 +633,38 @@ func (s *Server) broadcastConditions() {
 	s.clientsMutex.Lock()
 	defer s.clientsMutex.Unlock()
 
+	clientCount := len(s.clients)
+	if clientCount == 0 {
+		// No need to attempt broadcast when there are no clients
+		return
+	}
+
+	failedCount := 0
 	for client := range s.clients {
 		err := client.conn.WriteJSON(map[string]interface{}{
 			"type":       "clusterConditions",
 			"conditions": s.clusterConditions,
 		})
 		if err != nil {
-			logger.Log.Error("Error sending condition update", zap.Error(err))
+			failedCount++
+			logger.Log.Warn("Failed to send condition update to client",
+				zap.Error(err),
+				zap.String("errorType", err.Error()))
 			client.conn.Close()
 			delete(s.clients, client)
 		}
+	}
+
+	// Log results with appropriate level based on success/failure
+	if failedCount > 0 {
+		logger.Log.Info("Conditions broadcast completed with errors",
+			zap.Int("totalClients", clientCount),
+			zap.Int("failedClients", failedCount),
+			zap.Int("conditions", len(s.clusterConditions)))
+	} else {
+		logger.Log.Debug("Conditions broadcast completed successfully",
+			zap.Int("clients", clientCount),
+			zap.Int("conditions", len(s.clusterConditions)))
 	}
 }
 
@@ -468,19 +672,35 @@ func (s *Server) broadcastConditions() {
 func (s *Server) sendCachedEvents(client *Client, clusterName string) {
 	s.eventCacheMutex.RLock()
 	events, exists := s.eventCache[clusterName]
+	eventCount := len(events)
 	s.eventCacheMutex.RUnlock()
 
-	if !exists || len(events) == 0 {
+	if !exists || eventCount == 0 {
+		logger.Log.Debug("No cached events to send",
+			zap.String("cluster", clusterName),
+			zap.String("sessionId", client.eventSessionId))
 		return
 	}
 
+	logger.Log.Debug("Sending cached events",
+		zap.String("cluster", clusterName),
+		zap.String("sessionId", client.eventSessionId),
+		zap.Int("eventCount", eventCount))
+
+	sentCount := 0
 	for _, event := range events {
 		event.SessionID = client.eventSessionId
 		err := client.conn.WriteJSON(event)
 		if err != nil {
-			logger.Log.Error("Error sending cached event", zap.Error(err))
+			logger.Log.Warn("Failed to send cached event",
+				zap.Error(err),
+				zap.String("cluster", clusterName),
+				zap.String("sessionId", client.eventSessionId),
+				zap.Int("eventsSent", sentCount),
+				zap.Int("totalEvents", eventCount))
 			return
 		}
+		sentCount++
 	}
 }
 

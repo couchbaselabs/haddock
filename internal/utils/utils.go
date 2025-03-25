@@ -22,18 +22,21 @@ type Message struct {
 	SessionID   string `json:"sessionId,omitempty"`
 }
 
-// getPodLabels retrieves labels of an involved pod
+// GetPodLabels retrieves labels of an involved pod
 func GetPodLabels(clientset *kubernetes.Clientset, dynamicClient dynamic.Interface, obj v1.ObjectReference) map[string]string {
-	if obj.Kind == "Pod" {
-		logger.Log.Debug("Fetching labels for pod", zap.String("name", obj.Name))
-		pod, err := clientset.CoreV1().Pods(obj.Namespace).Get(context.TODO(), obj.Name, metav1.GetOptions{})
-		if err != nil {
-			logger.Log.Error("Error fetching pod", zap.Error(err))
-			return nil
-		}
-		return pod.Labels
-	} else {
-		logger.Log.Debug("Unsupported kind", zap.String("kind", obj.Kind))
+	// Early return for non-Pod objects
+	if obj.Kind != "Pod" {
 		return nil
 	}
+
+	pod, err := clientset.CoreV1().Pods(obj.Namespace).Get(context.TODO(), obj.Name, metav1.GetOptions{})
+	if err != nil {
+		logger.Log.Error("Failed to fetch pod labels",
+			zap.Error(err),
+			zap.String("name", obj.Name),
+			zap.String("namespace", obj.Namespace))
+		return nil
+	}
+
+	return pod.Labels
 }

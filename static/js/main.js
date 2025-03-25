@@ -260,24 +260,26 @@ function handleClusterSelection() {
 
 function handleWebSocketMessage(event) {
     const data = JSON.parse(event.data);
-    switch (data.type) {
-        case "clusters":
-            updateClusters(data.clusters);
-            break;
-        case "event":
-            if (data.sessionId === currentEventSessionId) {
-                updateEvents(data);
-            }
-            break;
-        case "log":
-            if (data.sessionId === currentLogSessionId) {
-                updateLogs(data);
-            }
-            break;
-        case "clusterConditions":
-            console.log("conditions triggered")
-            renderClusterTiles(data.conditions);
-            break;
+    
+    if (data.type === "clusters") {
+        updateClusters(data.clusters);
+        return;
+    }
+    
+    if (data.type === "event" && data.sessionId === currentEventSessionId) {
+        updateEvents(data);
+        return;
+    }
+    
+    if (data.type === "log" && data.sessionId === currentLogSessionId) {
+        updateLogs(data);
+        return;
+    }
+    
+    if (data.type === "clusterConditions") {
+        console.log("conditions triggered")
+        renderClusterTiles(data.conditions);
+        return;
     }
 }
 

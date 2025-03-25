@@ -52,48 +52,65 @@ func NewServer() *Server {
 }
 
 func (s *Server) Start() {
-	var err error
+	// Get the namespace from environment variable - critical for operation
+	namespace := os.Getenv("WATCH_NAMESPACE")
+	if namespace == "" {
+		logger.Log.Fatal("Cannot start server - WATCH_NAMESPACE environment variable not set")
+		return
+	}
+
+	logger.Log.Info("Starting server",
+		zap.String("namespace", namespace),
+		zap.String("port", ":3000"))
+
+	// Set up Kubernetes clients
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		logger.Log.Fatal("Failed to get in-cluster config", zap.Error(err))
+		logger.Log.Fatal("Cannot initialize Kubernetes client - failed to get in-cluster config",
+			zap.Error(err))
+		return
 	}
 
 	s.clientset, err = kubernetes.NewForConfig(config)
 	if err != nil {
-		logger.Log.Fatal("Failed to create Kubernetes client", zap.Error(err))
+		logger.Log.Fatal("Cannot initialize Kubernetes client",
+			zap.Error(err))
+		return
 	}
 
 	s.dynamicClient, err = dynamic.NewForConfig(config)
 	if err != nil {
-		logger.Log.Fatal("Failed to create dynamic client", zap.Error(err))
+		logger.Log.Fatal("Cannot initialize Kubernetes dynamic client",
+			zap.Error(err))
+		return
 	}
 
-	namespace := os.Getenv("WATCH_NAMESPACE")
-	if namespace == "" {
-		logger.Log.Fatal("WATCH_NAMESPACE environment variable not set")
-	}
-
+	// Start the cluster watcher
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	// Start the cluster watcher with separate add and delete functions
 	go cluster.StartClusterWatcher(ctx, s.dynamicClient, s.addCluster, s.deleteCluster, s.updateConditions)
 
+	// Set up HTTP handlers
 	fs := http.FileServer(http.Dir("static"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
-	// Use the extracted handler functions
 	http.HandleFunc("/", s.handleRootRoute)
 	http.HandleFunc("/cluster/", s.handleClusterRoute)
 	http.HandleFunc("/ws", s.handleConnections)
-	// Add a handler for the Couchbase UI proxy - maintain trailing slash to ensure path consistency
 	http.HandleFunc("/cui/", s.handleCouchbaseUIProxy)
-	// Add the metrics endpoint
 	http.HandleFunc("/metrics", s.handleMetricsEndpoint)
 
+	// Start message handler
 	go s.handleMessages()
 
-	logger.Log.Info("Server started on :3000")
+	// Start HTTP server
+	logger.Log.Info("Server listening",
+		zap.String("port", ":3000"),
+		zap.String("namespace", namespace))
+
 	if err := http.ListenAndServe(":3000", nil); err != nil {
-		logger.Log.Fatal("Server failed", zap.Error(err))
+		logger.Log.Fatal("Server failed",
+			zap.Error(err),
+			zap.String("port", ":3000"))
 	}
 }

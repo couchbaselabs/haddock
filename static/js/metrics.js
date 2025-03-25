@@ -336,8 +336,12 @@ function renderMetricCards(simpleMetrics) {
     const metricsGrid = document.querySelector('.metrics-grid');
     if (!metricsGrid) return;
     
-    // Store existing cards in the DOM
+    const fragment = document.createDocumentFragment();
     const existingCards = {};
+    const metricStillExists = new Set();
+    const orderedElements = [];
+    
+    // Store existing cards in the DOM
     const existingCardsInDOM = document.querySelectorAll('.metric-card');
     existingCardsInDOM.forEach(card => {
         existingCards[card.getAttribute('data-metric-name')] = card;
@@ -362,13 +366,6 @@ function renderMetricCards(simpleMetrics) {
     
     // Sort metrics by their position to maintain order
     currentMetrics.sort((a, b) => a.position - b.position);
-    
-    // Track which metrics still exist to identify metrics to remove
-    const metricStillExists = new Set();
-    
-    // Create fragment to minimize DOM operations
-    const fragment = document.createDocumentFragment();
-    const orderedElements = [];
     
     // Create or update cards in position order
     currentMetrics.forEach(({name, metric}) => {
@@ -396,36 +393,32 @@ function renderMetricCards(simpleMetrics) {
         }
     }
     
-    // Empty the grid if we have content to append
-    if (orderedElements.length > 0 && metricsGrid.children.length > 0) {
-        // Check if the order or content has changed
-        let needsUpdate = metricsGrid.children.length !== orderedElements.length;
-        
-        if (!needsUpdate) {
-            // Check if the order matches
-            for (let i = 0; i < orderedElements.length; i++) {
-                if (metricsGrid.children[i] !== orderedElements[i]) {
-                    needsUpdate = true;
-                    break;
-                }
-            }
-        }
-        
-        if (needsUpdate) {
-            // Create fragment and add all elements
-            orderedElements.forEach(elem => fragment.appendChild(elem));
-            
-            // Clear grid and add the fragment
-            metricsGrid.innerHTML = '';
-            metricsGrid.appendChild(fragment);
-        }
-    } else if (orderedElements.length > 0) {
-        // Just append all elements
+    if (orderedElements.length === 0) {
+        metricsGrid.innerHTML = '<div class="no-results">No metrics found</div>';
+        return;
+    }
+
+    if (metricsGrid.children.length === 0) {
         orderedElements.forEach(elem => fragment.appendChild(elem));
         metricsGrid.appendChild(fragment);
-    } else {
-        // No metrics to display
-        metricsGrid.innerHTML = '<div class="no-results">No metrics found</div>';
+        return;
+    }
+
+    // Check if the order or content has changed
+    let needsUpdate = metricsGrid.children.length !== orderedElements.length;
+    if (!needsUpdate) {
+        for (let i = 0; i < orderedElements.length; i++) {
+            if (metricsGrid.children[i] !== orderedElements[i]) {
+                needsUpdate = true;
+                break;
+            }
+        }
+    }
+
+    if (needsUpdate) {
+        orderedElements.forEach(elem => fragment.appendChild(elem));
+        metricsGrid.innerHTML = '';
+        metricsGrid.appendChild(fragment);
     }
 }
 
@@ -795,31 +788,27 @@ function renderChartSection(container, title, metrics, createChartFn, updateChar
         orderedWrappers.push(wrapper);
     });
     
-    // Only rebuild the grid if the content has changed
-    if (orderedWrappers.length > 0) {
-        // Check if the grid needs updating
-        let needsUpdate = grid.children.length !== orderedWrappers.length;
-        
-        if (!needsUpdate) {
-            // Check if the order matches
-            for (let i = 0; i < orderedWrappers.length; i++) {
-                if (grid.children[i] !== orderedWrappers[i]) {
-                    needsUpdate = true;
-                    break;
-                }
+    if (orderedWrappers.length === 0) {
+        return;
+    }
+
+    // Check if the grid needs updating
+    let needsUpdate = grid.children.length !== orderedWrappers.length;
+    if (!needsUpdate) {
+        for (let i = 0; i < orderedWrappers.length; i++) {
+            if (grid.children[i] !== orderedWrappers[i]) {
+                needsUpdate = true;
+                break;
             }
         }
-        
-        if (needsUpdate) {
-            // Add all wrappers to the fragment
-            orderedWrappers.forEach(wrapper => fragment.appendChild(wrapper));
-            
-            // Clear grid and add the fragment
-            grid.innerHTML = '';
-            grid.appendChild(fragment);
-        }
     }
-    
+
+    if (needsUpdate) {
+        orderedWrappers.forEach(wrapper => fragment.appendChild(wrapper));
+        grid.innerHTML = '';
+        grid.appendChild(fragment);
+    }
+
     // Remove wrappers for metrics that no longer exist
     Object.keys(existingCharts).forEach(name => {
         if (!metricsStillExist.has(name)) {

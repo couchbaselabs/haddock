@@ -18,6 +18,9 @@ func (s *Server) handleCouchbaseAPIProxy(w http.ResponseWriter, r *http.Request)
 	// Determine which cluster to use by checking the referer header
 	referer := r.Header.Get("Referer")
 	if referer == "" {
+		logger.Log.Warn("API request rejected - missing referer header",
+			zap.String("remoteAddr", r.RemoteAddr),
+			zap.String("path", r.URL.Path))
 		http.Error(w, "API requests require a Referer header to determine target cluster", http.StatusBadRequest)
 		return
 	}
@@ -26,28 +29,40 @@ func (s *Server) handleCouchbaseAPIProxy(w http.ResponseWriter, r *http.Request)
 	// Expected format: http://host:port/cui/clustername/...
 	refererURL, err := url.Parse(referer)
 	if err != nil {
+		logger.Log.Warn("API request rejected - invalid referer format",
+			zap.Error(err),
+			zap.String("referer", referer),
+			zap.String("remoteAddr", r.RemoteAddr))
 		http.Error(w, "Invalid referer URL", http.StatusBadRequest)
 		return
 	}
 
 	refPath := refererURL.Path
 	if !strings.HasPrefix(refPath, "/cui/") {
+		logger.Log.Warn("API request rejected - referer path not starting with /cui/",
+			zap.String("refererPath", refPath),
+			zap.String("remoteAddr", r.RemoteAddr))
 		http.Error(w, "Referer path must start with /cui/", http.StatusBadRequest)
 		return
 	}
 
 	parts := strings.SplitN(strings.TrimPrefix(refPath, "/cui/"), "/", 2)
 	if len(parts) == 0 || parts[0] == "" {
+		logger.Log.Warn("API request rejected - could not extract cluster name",
+			zap.String("refererPath", refPath),
+			zap.String("remoteAddr", r.RemoteAddr))
 		http.Error(w, "Could not determine cluster name from referer", http.StatusBadRequest)
 		return
 	}
 
 	clusterName := parts[0]
-	logger.Log.Info("API request to", zap.String("path", r.URL.Path), zap.String("cluster", clusterName), zap.String("referer", referer))
 
 	// Get the namespace from environment variable
 	namespace := os.Getenv("WATCH_NAMESPACE")
 	if namespace == "" {
+		logger.Log.Error("API request failed - WATCH_NAMESPACE not set",
+			zap.String("cluster", clusterName),
+			zap.String("remoteAddr", r.RemoteAddr))
 		http.Error(w, "WATCH_NAMESPACE environment variable not set", http.StatusInternalServerError)
 		return
 	}
@@ -61,14 +76,27 @@ func (s *Server) handleCouchbaseAPIProxy(w http.ResponseWriter, r *http.Request)
 		Host:   fmt.Sprintf("%s.%s.svc.cluster.local:8091", svcName, namespace),
 	}
 
-	logger.Log.Info("Proxying API request to", zap.String("targetURL", targetURL.String()))
+	// Only log API requests at debug level unless they're unusual
+	if r.Method != "GET" || strings.Contains(r.URL.Path, "/settings") {
+		logger.Log.Info("Proxying API request",
+			zap.String("cluster", clusterName),
+			zap.String("method", r.Method),
+			zap.String("path", r.URL.Path),
+			zap.String("targetURL", targetURL.String()))
+	}
 
 	// Create a reverse proxy
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 
 	// Handle errors
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		logger.Log.Error("API Proxy error", zap.Error(err))
+		logger.Log.Error("API proxy error",
+			zap.Error(err),
+			zap.String("cluster", clusterName),
+			zap.String("namespace", namespace),
+			zap.String("path", r.URL.Path),
+			zap.String("method", r.Method),
+			zap.String("remoteAddr", r.RemoteAddr))
 		http.Error(w, fmt.Sprintf("API Proxy error: %v", err), http.StatusBadGateway)
 	}
 
@@ -81,7 +109,6 @@ func (s *Server) handleCouchbaseAPIProxy(w http.ResponseWriter, r *http.Request)
 		req.URL.Scheme = targetURL.Scheme
 		req.URL.Host = targetURL.Host
 		// Keep the original path
-		logger.Log.Info("Final API request", zap.String("requestURL", req.URL.String()))
 	}
 
 	// Serve the proxy request
@@ -96,16 +123,29 @@ func (s *Server) handleCouchbaseUIProxy(w http.ResponseWriter, r *http.Request) 
 	parts := strings.SplitN(strings.TrimPrefix(path, "/cui/"), "/", 2)
 
 	if len(parts) == 0 || parts[0] == "" {
+		logger.Log.Warn("UI proxy request rejected - missing cluster name",
+			zap.String("path", path),
+			zap.String("remoteAddr", r.RemoteAddr))
 		http.Error(w, "Cluster name is required", http.StatusBadRequest)
 		return
 	}
 
 	clusterName := parts[0]
-	logger.Log.Info("Proxying to Couchbase UI for cluster", zap.String("cluster", clusterName), zap.String("path", path))
+
+	// For production logging, only log the initial access to a cluster UI
+	// and not every asset/resource request
+	if len(parts) <= 1 || parts[1] == "" || parts[1] == "/" {
+		logger.Log.Info("Proxying to Couchbase UI homepage",
+			zap.String("cluster", clusterName),
+			zap.String("remoteAddr", r.RemoteAddr))
+	}
 
 	// Get the namespace from environment variable
 	namespace := os.Getenv("WATCH_NAMESPACE")
 	if namespace == "" {
+		logger.Log.Error("UI proxy request failed - WATCH_NAMESPACE not set",
+			zap.String("cluster", clusterName),
+			zap.String("remoteAddr", r.RemoteAddr))
 		http.Error(w, "WATCH_NAMESPACE environment variable not set", http.StatusInternalServerError)
 		return
 	}
@@ -124,7 +164,12 @@ func (s *Server) handleCouchbaseUIProxy(w http.ResponseWriter, r *http.Request) 
 
 	// Handle errors
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		logger.Log.Error("Proxy error", zap.Error(err))
+		logger.Log.Error("UI proxy error",
+			zap.Error(err),
+			zap.String("cluster", clusterName),
+			zap.String("namespace", namespace),
+			zap.String("path", r.URL.Path),
+			zap.String("remoteAddr", r.RemoteAddr))
 		http.Error(w, fmt.Sprintf("Proxy error: %v", err), http.StatusBadGateway)
 	}
 
@@ -153,15 +198,23 @@ func (s *Server) handleCouchbaseUIProxy(w http.ResponseWriter, r *http.Request) 
 		if resp.StatusCode >= 300 && resp.StatusCode < 400 {
 			location := resp.Header.Get("Location")
 			if location != "" {
-				logger.Log.Info("Original redirect location", zap.String("location", location))
 				redirectURL, err := url.Parse(location)
 				if err != nil {
-					logger.Log.Error("Error parsing redirect URL", zap.Error(err))
+					logger.Log.Error("Failed to parse redirect URL",
+						zap.Error(err),
+						zap.String("location", location),
+						zap.String("cluster", clusterName))
 				} else {
 					// Extract the path and rewrite it to our proxy format
 					path := redirectURL.Path
 					newLocation := fmt.Sprintf("/cui/%s%s", clusterName, path)
 					resp.Header.Set("Location", newLocation)
+
+					// Only log redirects at debug level
+					logger.Log.Debug("Rewrote redirect location",
+						zap.String("originalLocation", location),
+						zap.String("newLocation", newLocation),
+						zap.String("cluster", clusterName))
 				}
 			}
 		}

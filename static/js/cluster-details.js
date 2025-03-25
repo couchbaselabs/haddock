@@ -216,20 +216,20 @@ function initializeSearchFunctionality() {
 // ==================== EVENT HANDLERS ====================
 function handleWebSocketMessage(event) {
     const data = JSON.parse(event.data);
-    switch (data.type) {
-        case "clusterConditions":
-            renderConditions(data.conditions);
-            break;
-        case "event":
-            if (data.sessionId === currentEventSessionId) {
-                updateEvents(data);
-            }
-            break;
-        case "log":
-            if (data.sessionId === currentLogSessionId) {
-                updateLogs(data);
-            }
-            break;
+    
+    if (data.type === "clusterConditions") {
+        renderConditions(data.conditions);
+        return;
+    }
+    
+    if (data.type === "event" && data.sessionId === currentEventSessionId) {
+        updateEvents(data);
+        return;
+    }
+    
+    if (data.type === "log" && data.sessionId === currentLogSessionId) {
+        updateLogs(data);
+        return;
     }
 }
 
