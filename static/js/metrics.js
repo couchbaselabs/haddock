@@ -7,15 +7,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.location.hash === '#metrics') {
         startMetricsRefresh();
     }
-    
-    // Close tooltips when clicking elsewhere on the page
-    document.addEventListener('click', (e) => {
-        if (!e.target.closest('.metric-card') && !e.target.closest('.chart-wrapper')) {
-            document.querySelectorAll('.tooltip-active').forEach(el => {
-                el.classList.remove('tooltip-active');
-            });
-        }
-    });
 });
 
 // Global variables
@@ -26,6 +17,18 @@ let metricsFuse = null; // For fuzzy search
 let currentMetricsData = []; // Store the current metrics data
 const METRICS_SEARCH_DEBOUNCE_DELAY = 300; // Delay in ms for search debounce
 let metricsSearchTimeout = null;
+
+// Cache DOM references
+const DOM = {
+    metricsGrid: () => document.querySelector('.metrics-grid'),
+    chartsContainer: () => document.querySelector('.charts-container'),
+    metricsHeader: () => document.querySelector('.metrics-dashboard .metrics-header'),
+    refreshIndicator: () => document.getElementById('refreshIndicator'),
+    refreshDot: () => document.querySelector('.refresh-dot'),
+    metricsSearch: () => document.getElementById('metricsSearch'),
+    metricsType: () => document.getElementById('metricsType'),
+    clearMetricsSearch: () => document.getElementById('clearMetricsSearch')
+};
 
 // Start metrics refresh interval
 function startMetricsRefresh() {
@@ -49,7 +52,7 @@ function stopMetricsRefresh() {
         metricsRefreshInterval = null;
         
         // Remove refresh indicator
-        const refreshIndicator = document.getElementById('refreshIndicator');
+        const refreshIndicator = DOM.refreshIndicator();
         if (refreshIndicator) {
             refreshIndicator.remove();
         }
@@ -58,8 +61,8 @@ function stopMetricsRefresh() {
 
 // Add refresh indicator to the header
 function addRefreshIndicator() {
-    const metricsHeader = document.querySelector('.metrics-dashboard .metrics-header');
-    if (metricsHeader && !document.getElementById('refreshIndicator')) {
+    const metricsHeader = DOM.metricsHeader();
+    if (metricsHeader && !DOM.refreshIndicator()) {
         const refreshIndicator = document.createElement('div');
         refreshIndicator.id = 'refreshIndicator';
         refreshIndicator.className = 'refresh-indicator';
@@ -145,7 +148,7 @@ async function fetchAndDisplayMetrics() {
         initializeMetricsFuse(organizedMetrics);
         
         // Check if search is active
-        const searchInput = document.getElementById('metricsSearch');
+        const searchInput = DOM.metricsSearch();
         if (searchInput && searchInput.value.trim()) {
             // If we're searching, show search results instead
             searchMetrics(searchInput.value.trim());
@@ -155,7 +158,7 @@ async function fetchAndDisplayMetrics() {
             renderGraphMetrics(organizedMetrics.histograms, organizedMetrics.summaries);
             
             // Apply any active type filters
-            const typeSelect = document.getElementById('metricsType');
+            const typeSelect = DOM.metricsType();
             if (typeSelect && typeSelect.value !== 'all') {
                 filterMetrics();
             }
@@ -195,14 +198,14 @@ function searchMetrics(query) {
         renderGraphMetrics(histograms, summaries);
     } else {
         // Show no results message
-        document.querySelector('.metrics-grid').innerHTML = '<div class="no-results">No matching metrics found</div>';
-        document.querySelector('.charts-container').innerHTML = '';
+        DOM.metricsGrid().innerHTML = '<div class="no-results">No matching metrics found</div>';
+        DOM.chartsContainer().innerHTML = '';
     }
 }
 
 // Show pulse animation on the refresh indicator
 function pulseRefreshIndicator() {
-    const refreshDot = document.querySelector('.refresh-dot');
+    const refreshDot = DOM.refreshDot();
     if (refreshDot) {
         refreshDot.classList.add('pulse');
         setTimeout(() => refreshDot.classList.remove('pulse'), 1000);
@@ -211,7 +214,7 @@ function pulseRefreshIndicator() {
 
 // Show error message in the metrics grid
 function showErrorMessage(message) {
-    document.querySelector('.metrics-grid').innerHTML = `
+    DOM.metricsGrid().innerHTML = `
         <div class="error-message">
             Failed to load metrics: ${message}
         </div>
@@ -333,7 +336,7 @@ function processSimpleMetric(metricFamily, metric, result) {
 
 // Render metric cards for simple metrics
 function renderMetricCards(simpleMetrics) {
-    const metricsGrid = document.querySelector('.metrics-grid');
+    const metricsGrid = DOM.metricsGrid();
     if (!metricsGrid) return;
     
     const fragment = document.createDocumentFragment();
@@ -430,9 +433,6 @@ function createMetricCard(metric) {
     card.setAttribute('data-metric-type', metric.type.toLowerCase() || 'unknown');
     card.setAttribute('data-metric-name', metric.name);
     
-    // Prevent browser default title tooltip
-    card.setAttribute('title', '');
-    
     // Create header with title and type
     const metricHeader = document.createElement('div');
     metricHeader.className = 'metric-header';
@@ -466,24 +466,6 @@ function createMetricCard(metric) {
     
     card.appendChild(valueElement);
     
-    // Add tooltip with help text
-    const tooltip = createTooltip(metric);
-    card.appendChild(tooltip);
-    
-    // Add click handler to show tooltip
-    card.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        // Close any other open tooltips
-        document.querySelectorAll('.tooltip-active').forEach(el => {
-            if (el !== card) el.classList.remove('tooltip-active');
-        });
-        
-        // Toggle tooltip visibility
-        card.classList.toggle('tooltip-active');
-    });
-    
     return card;
 }
 
@@ -500,36 +482,6 @@ function updateMetricCardValue(card, metric) {
         valueDisplay.classList.remove('value-updated');
         setTimeout(() => valueDisplay.classList.add('value-updated'), 10);
     }
-    
-    // Update tooltip
-    const tooltip = card.querySelector('.tooltip');
-    if (tooltip) {
-        const helpElement = tooltip.querySelector('p');
-        if (helpElement && metric.help) {
-            helpElement.textContent = metric.help;
-        }
-    }
-}
-
-// Create tooltip element
-function createTooltip(metric) {
-    // Create tooltip element
-    const tooltip = document.createElement('div');
-    tooltip.className = 'tooltip';
-    
-    // Include full metric name at the top with formatting
-    const nameElement = document.createElement('strong');
-    nameElement.textContent = metric.name;
-    tooltip.appendChild(nameElement);
-    
-    // Add help text if available
-    if (metric.help) {
-        const helpElement = document.createElement('p');
-        helpElement.textContent = metric.help;
-        tooltip.appendChild(helpElement);
-    }
-    
-    return tooltip;
 }
 
 // Format metric values for display with appropriate units
@@ -583,8 +535,8 @@ function formatNumber(num, decimalPlaces = 0) {
 
 // Setup filtering for metrics
 function setupMetricsFiltering() {
-    const typeSelect = document.getElementById('metricsType');
-    const searchInput = document.getElementById('metricsSearch');
+    const typeSelect = DOM.metricsType();
+    const searchInput = DOM.metricsSearch();
     
     if (typeSelect) {
         typeSelect.addEventListener('change', filterMetrics);
@@ -612,7 +564,7 @@ function setupMetricsFiltering() {
         });
         
         // Add clear button functionality if it exists
-        const clearSearchBtn = document.getElementById('clearMetricsSearch');
+        const clearSearchBtn = DOM.clearMetricsSearch();
         if (clearSearchBtn) {
             clearSearchBtn.addEventListener('click', () => {
                 searchInput.value = '';
@@ -624,7 +576,7 @@ function setupMetricsFiltering() {
 
 // Filter metrics based on type
 function filterMetrics() {
-    const typeSelect = document.getElementById('metricsType');
+    const typeSelect = DOM.metricsType();
     
     if (!typeSelect) return;
     
@@ -667,7 +619,7 @@ function filterMetrics() {
 
 // Render chart wrappers for histogram and summary metrics
 function renderGraphMetrics(histograms, summaries) {
-    const chartsContainer = document.querySelector('.charts-container');
+    const chartsContainer = DOM.chartsContainer();
     if (!chartsContainer) return;
     
     // Create or find sections and render content
@@ -744,45 +696,17 @@ function renderChartSection(container, title, metrics, createChartFn, updateChar
                 // If chart instance is lost, recreate it
                 createChartFn(canvas, metric);
             }
-            
-            // Update tooltip
-            const tooltip = wrapper.querySelector('.tooltip');
-            if (tooltip) {
-                const helpElement = tooltip.querySelector('p');
-                if (helpElement && metric.help) {
-                    helpElement.textContent = metric.help;
-                }
-            }
         } else {
             // Create new wrapper and chart
             wrapper = document.createElement('div');
             wrapper.className = 'chart-wrapper';
             wrapper.setAttribute('data-metric-name', metric.name);
-            wrapper.setAttribute('title', ''); // Prevent browser tooltip
             
             const canvas = document.createElement('canvas');
             wrapper.appendChild(canvas);
             
-            // Add tooltip
-            const tooltip = createChartTooltip(metric);
-            wrapper.appendChild(tooltip);
-            
             // Create chart after DOM insertion
             createChartFn(canvas, metric);
-            
-            // Add click handler to show tooltip
-            wrapper.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                // Close any other open tooltips
-                document.querySelectorAll('.tooltip-active').forEach(el => {
-                    if (el !== wrapper) el.classList.remove('tooltip-active');
-                });
-                
-                // Toggle tooltip visibility
-                wrapper.classList.toggle('tooltip-active');
-            });
         }
         
         orderedWrappers.push(wrapper);
@@ -795,6 +719,7 @@ function renderChartSection(container, title, metrics, createChartFn, updateChar
     // Check if the grid needs updating
     let needsUpdate = grid.children.length !== orderedWrappers.length;
     if (!needsUpdate) {
+        // Only check until we find a difference
         for (let i = 0; i < orderedWrappers.length; i++) {
             if (grid.children[i] !== orderedWrappers[i]) {
                 needsUpdate = true;
@@ -815,49 +740,6 @@ function renderChartSection(container, title, metrics, createChartFn, updateChar
             existingCharts[name].remove();
         }
     });
-}
-
-// Create tooltip for chart
-function createChartTooltip(metric) {
-    const tooltip = document.createElement('div');
-    tooltip.className = 'tooltip';
-    
-    // Include full metric name at the top with formatting
-    const nameElement = document.createElement('strong');
-    nameElement.textContent = metric.name;
-    tooltip.appendChild(nameElement);
-    
-    // Add help text if available
-    if (metric.help) {
-        const helpElement = document.createElement('p');
-        helpElement.textContent = metric.help;
-        tooltip.appendChild(helpElement);
-    }
-    
-    // Add statistics for histograms and summaries
-    if (metric.type === 'HISTOGRAM' && metric.count) {
-        const statsElement = document.createElement('p');
-        statsElement.innerHTML = `<b>Count:</b> ${formatMetricValue(metric.count, 'count')}`;
-        tooltip.appendChild(statsElement);
-        
-        if (metric.sum) {
-            const sumElement = document.createElement('p');
-            sumElement.innerHTML = `<b>Sum:</b> ${formatMetricValue(metric.sum, 'sum')}`;
-            tooltip.appendChild(sumElement);
-        }
-    } else if (metric.type === 'SUMMARY' && metric.count) {
-        const statsElement = document.createElement('p');
-        statsElement.innerHTML = `<b>Count:</b> ${formatMetricValue(metric.count, 'count')}`;
-        tooltip.appendChild(statsElement);
-        
-        if (metric.sum) {
-            const sumElement = document.createElement('p');
-            sumElement.innerHTML = `<b>Sum:</b> ${formatMetricValue(metric.sum, 'sum')}`;
-            tooltip.appendChild(sumElement);
-        }
-    }
-    
-    return tooltip;
 }
 
 // Create a histogram chart using Chart.js
@@ -923,10 +805,6 @@ function createHistogramChart(canvas, metric) {
                         text: 'Bucket Upper Bound'
                     }
                 }
-            },
-            // Add event handler to prevent clicks on chart from closing tooltip
-            onClick: function(e) {
-                e.native.stopPropagation();
             }
         }
     });
@@ -1045,10 +923,6 @@ function createSummaryChart(canvas, metric) {
                         text: 'Percentile'
                     }
                 }
-            },
-            // Add event handler to prevent clicks on chart from closing tooltip
-            onClick: function(e) {
-                e.native.stopPropagation();
             }
         }
     });

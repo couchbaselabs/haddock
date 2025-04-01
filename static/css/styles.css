@@ -30,6 +30,7 @@
     --text-color: #333333;
     --accent-color: #1a73e8;
     --accent-color-hover: #1557b0;
+    --couchbase-red: #ED2226;
   }
   
   /* Reset and Base Styles */
@@ -1229,16 +1230,44 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
+}
+
+.logo-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.couchbase-logo {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+    transition: all 0.3s ease;
+    border-radius: 4px;
 }
 
 .sidebar-header h3 {
     margin: 0;
     font-size: 1.5em;
+    transition: opacity 0.3s ease;
+}
+
+.sidebar.collapsed .logo-container {
+    justify-content: center;
+    width: 100%;
+    padding: 0;
+}
+
+.sidebar.collapsed .couchbase-logo {
+    width: 32px;
+    height: 32px;
+    margin: 0;
 }
 
 .sidebar.collapsed .sidebar-header h3 {
     display: none;
+    opacity: 0;
 }
 
 .sidebar-nav ul {
@@ -1294,11 +1323,11 @@
 .sidebar-nav .nav-item.active a {
     background-color: rgba(255, 255, 255, 0.1);
     color: #fff;
-    border-left-color: #f0a30a;
+    border-left-color: var(--couchbase-red);
 }
 
 .sidebar.collapsed .sidebar-nav .nav-item a {
-    padding: 15px;
+    padding: 15px 0;
     justify-content: center;
 }
 
@@ -1458,7 +1487,7 @@ header h1 {
     justify-content: center;
 }
 
-/* Value update animation */
+/* Improved highlight animation */
 @keyframes highlight {
     0% { background-color: rgba(255, 193, 7, 0.2); }
     50% { background-color: rgba(255, 193, 7, 0.5); }
@@ -1567,80 +1596,6 @@ header h1 {
     }
 }
 
-/* Updated tooltip styling for the custom tooltip elements */
-.tooltip {
-    display: none;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 80%;
-    max-width: 250px;
-    background-color: rgba(0, 0, 0, 0.9);
-    color: #fff;
-    padding: 10px 15px;
-    border-radius: 6px;
-    font-size: 12px;
-    z-index: 100;
-    text-align: left;
-    line-height: 1.4;
-    box-shadow: 0 3px 10px rgba(0,0,0,0.2);
-    word-break: break-word;
-    max-height: 90%;
-    overflow: auto;
-}
-
-/* Remove the arrow when tooltip is inside the card */
-.tooltip::after {
-    display: none;
-}
-
-/* Show tooltip when card has tooltip-active class */
-.metric-card.tooltip-active .tooltip,
-.chart-wrapper.tooltip-active .tooltip {
-    display: block;
-}
-
-.tooltip strong {
-    display: block;
-    font-weight: 600;
-    font-size: 13px;
-    margin-bottom: 6px;
-    color: #4285F4;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-    padding-bottom: 5px;
-}
-
-.tooltip p {
-    margin: 6px 0;
-    font-size: 12px;
-}
-
-/* Specific positioning for chart tooltips to ensure they're visible */
-.chart-wrapper .tooltip {
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 90%;
-    max-width: 300px;
-    z-index: 200; /* Higher z-index to appear above the chart */
-    background-color: rgba(0, 0, 0, 0.9);
-    line-height: 1.5;
-    max-height: 85%;
-    overflow-y: auto;
-}
-
-/* Additional styling for histogram/summary stats in tooltips */
-.tooltip b {
-    font-weight: 600;
-    color: #BBD6FB;
-}
-
-/* Make sure chart tooltips are above the darkened overlay */
-.chart-wrapper.tooltip-active .tooltip {
-    z-index: 100;
-}
-
 /* Metric card header - fix for overflowing names */
 .metric-name {
     font-size: 1rem;
@@ -1671,35 +1626,6 @@ header h1 {
     max-width: none;
 }
 
-/* Improved highlight animation */
-@keyframes highlight {
-    0% { background-color: rgba(255, 193, 7, 0.2); }
-    50% { background-color: rgba(255, 193, 7, 0.5); }
-    100% { background-color: transparent; }
-}
-
-.metric-value.value-updated {
-    animation: highlight 1.5s ease;
-}
-
-.metric-card.tooltip-active,
-.chart-wrapper.tooltip-active {
-    position: relative;
-}
-
-.metric-card.tooltip-active::before,
-.chart-wrapper.tooltip-active::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.7);
-    z-index: 50;
-    border-radius: 8px;
-}
-
 /* Add styling for SVG icons */
 .sidebar-icon {
     display: inline-block;
@@ -1711,6 +1637,7 @@ header h1 {
     stroke-width: 0;
     fill: currentColor;
     vertical-align: middle;
+    transition: all 0.3s ease;
 }
 
 .toggle-icon {
@@ -1721,6 +1648,7 @@ header h1 {
     stroke-width: 2;
     fill: none;
     vertical-align: middle;
+    transition: transform 0.3s ease;
 }
 
 /* Update existing styles to work with SVG instead of Font Awesome */
@@ -1735,7 +1663,7 @@ header h1 {
 }
 
 .sidebar.collapsed .sidebar-nav .nav-item a {
-    padding: 15px;
+    padding: 15px 0;
     justify-content: center;
 }
 

@@ -5,14 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Couchbase Operator Dashboard</title>
     <link rel="stylesheet" href="/static/css/styles.css">
-    <script src="/static/js/chart.js"></script>
-    <!-- Font Awesome has been removed for offline use -->
+    <script src="/static/js/chart.js"></script> 
+    <link rel="icon" href="/static/images/couchbase.svg" type="image/svg+xml">
 </head>
 <body>
     <div class="app-container">
         <div class="sidebar">
             <div class="sidebar-header">
-                <h3>COD</h3>
+                <div class="logo-container">
+                    <img src="/static/images/couchbase.svg" alt="Couchbase Logo" class="couchbase-logo">
+                    <h3>COD</h3>
+                </div>
             </div>
             <nav class="sidebar-nav">
                 <ul>
@@ -137,11 +140,7 @@
                 
                 <div class="metrics-dashboard">
                     <div class="metrics-header">
-                        <h2>Metrics Dashboard</h2>
-                        <!-- The refresh indicator will be inserted here by JS -->
-                    </div>
-                    
-                    <div class="metrics-filter">
+                       <div class="metrics-filter">
                         <input type="text" id="metricsSearch" placeholder="Filter metrics...">
                         <select id="metricsType">
                             <option value="all">All Types</option>
@@ -151,6 +150,10 @@
                             <option value="summary">Summaries</option>
                         </select>
                     </div>
+                        <!-- The refresh indicator will be inserted here by JS -->
+                    </div>
+                    
+                    
                     
                     <div class="metrics-grid">
                         <!-- Metrics cards will be generated here -->
