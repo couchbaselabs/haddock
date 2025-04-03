@@ -1,0 +1,395 @@
+/* Status Dashboard Styles */
+:root {
+    --primary-color: #1a73e8;
+    --border-color: #dadce0;
+    --background-light: #ffffff;
+    --background-main: #f8f9fa;
+    --dark-text: #202124;
+    --medium-text: #5f6368;
+    --light-text: #9aa0a6;
+    --shadow-sm: 0 1px 2px 0 rgba(60, 64, 67, 0.1);
+    --shadow-md: 0 2px 6px 2px rgba(60, 64, 67, 0.15);
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 16px;
+    --spacing-lg: 24px;
+    --spacing-xl: 32px;
+}
+
+/* Dashboard Tiles Styles */
+.dashboard-section {
+    background-color: #f8f9fa;
+    border-radius: 12px;
+    padding: 25px;
+    margin-bottom: 30px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.dashboard-section h2 {
+    margin-top: 0;
+    margin-bottom: 25px;
+    color: #333;
+    font-size: 1.5rem;
+}
+
+.cluster-tiles-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+}
+
+.cluster-tile {
+    background-color: white;
+    border-radius: 8px;
+    padding: 15px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+    cursor: pointer;
+}
+
+.cluster-tile:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.cluster-tile h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 1.1rem;
+    color: #333;
+}
+
+.conditions-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.condition-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #f1f1f1;
+}
+
+.condition-item:last-child {
+    border-bottom: none;
+}
+
+.condition-type {
+    font-weight: 500;
+}
+
+.condition-status {
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+/* Status colors */
+.status-green {
+    background-color: #e3f7e8;
+    color: #0d8b45;
+}
+
+.status-red {
+    background-color: #fbebeb;
+    color: #c93030;
+}
+
+.status-orange {
+    background-color: #fff5e6;
+    color: #eb9e34;
+}
+
+.status-blue {
+    background-color: #e6f4ff;
+    color: #2c82c9;
+}
+
+.status-purple {
+    background-color: #f5e6ff;
+    color: #8d46b8;
+}
+
+.status-grey {
+    background-color: #f2f2f2;
+    color: #777;
+}
+
+.tile-green {
+    border-left: 4px solid #0d8b45;
+}
+
+.tile-red {
+    border-left: 4px solid #c93030;
+}
+
+.tile-orange {
+    border-left: 4px solid #eb9e34;
+}
+
+.tile-blue {
+    border-left: 4px solid #2c82c9;
+}
+
+.tile-purple {
+    border-left: 4px solid #8d46b8;
+}
+
+.tile-grey {
+    border-left: 4px solid #777;
+}
+
+/* Cluster detail page styles */
+.back-link {
+    display: inline-block;
+    margin-top: 10px;
+    color: #2c82c9;
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.back-link:hover {
+    color: #1557b0;
+    text-decoration: underline;
+}
+
+.cluster-details {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 20px;
+    margin-top: 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* Cluster details page styles */
+.cluster-detail-page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 24px 32px;
+    background-color: var(--background-main);
+}
+
+.cluster-detail-page header {
+    display: flex;
+    flex-direction: column;
+    padding: 24px 0;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.cluster-detail-page h1 {
+    font-size: 32px;
+    font-weight: 500;
+    color: var(--primary-color);
+    margin: 0;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    margin-top: 16px;
+}
+
+.primary-button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: var(--radius-sm);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    font-size: 14px;
+}
+
+.primary-button:hover {
+    background-color: #0d5bbd;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+/* Cluster Conditions Section */
+.cluster-details {
+    background-color: var(--background-light);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    padding: 24px;
+    margin-bottom: 32px;
+}
+
+.cluster-details h2 {
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--dark-text);
+    margin: 0 0 20px 0;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.conditions-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 20px;
+}
+
+.condition-card {
+    background-color: white;
+    border-radius: var(--radius-md);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.condition-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
+
+.condition-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.condition-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.condition-details {
+    padding: 16px 20px;
+}
+
+.condition-field {
+    margin-bottom: 12px;
+}
+
+.field-label {
+    display: block;
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--medium-text);
+    margin-bottom: 4px;
+}
+
+.field-value {
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--dark-text);
+    word-break: break-word;
+}
+
+.condition-timestamps {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--border-color);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+/* Monitoring Section Styles */
+.monitoring-section {
+    background-color: var(--background-light);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    padding: 24px;
+}
+
+/* Status colors for condition cards */
+.condition-card.status-red {
+    border-top: 4px solid #e53935;
+}
+
+.condition-card.status-orange {
+    border-top: 4px solid #fb8c00;
+}
+
+.condition-card.status-yellow {
+    border-top: 4px solid #fdd835;
+}
+
+.condition-card.status-green {
+    border-top: 4px solid #43a047;
+}
+
+.condition-card.status-blue {
+    border-top: 4px solid #1e88e5;
+}
+
+.condition-card.status-purple {
+    border-top: 4px solid #8e24aa;
+}
+
+.condition-card.status-grey {
+    border-top: 4px solid #757575;
+}
+
+.status-red {
+    background-color: #ffebee;
+    color: #c62828;
+}
+
+.status-orange {
+    background-color: #fff3e0;
+    color: #e65100;
+}
+
+.status-yellow {
+    background-color: #fffde7;
+    color: #f57f17;
+}
+
+.status-green {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+}
+
+.status-blue {
+    background-color: #e3f2fd;
+    color: #1565c0;
+}
+
+.status-purple {
+    background-color: #f3e5f5;
+    color: #6a1b9a;
+}
+
+.status-grey {
+    background-color: #f5f5f5;
+    color: #424242;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .conditions-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .condition-timestamps {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 600px) {
+    .cluster-tiles-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .dashboard-section {
+        padding: 15px;
+    }
+    
+    .cluster-tile h3 {
+        font-size: 1rem;
+    }
+}

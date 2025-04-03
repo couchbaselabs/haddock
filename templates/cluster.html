@@ -4,7 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cluster: {{.Name}}</title>
-    <link rel="stylesheet" href="/static/css/styles.css">
+    <!-- Replace single CSS file with modular CSS files -->
+    <link rel="stylesheet" href="/static/css/common.css">
+    <link rel="stylesheet" href="/static/css/couchbaseui.css">
+    <link rel="stylesheet" href="/static/css/events.css">
+    <link rel="stylesheet" href="/static/css/logs.css">
+    <link rel="stylesheet" href="/static/css/status.css">
     <!-- External JavaScript file reference -->
     <script src="/static/js/fuse.js"></script>
     <script src="/static/js/cluster-details.js" defer></script>
