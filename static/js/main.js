@@ -27,6 +27,15 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Set up WebSocket event handler
     socket.onmessage = handleWebSocketMessage;
+    
+    // Initialize page-specific logic
+    const hash = window.location.hash.substring(1);
+    const initialPage = hash || 'dashboard';
+    if (initialPage === 'events') {
+        initializeEventsPage();
+    } else if (initialPage === 'logs') {
+        initializeLogsPage();
+    }
 });
 
 // ==================== INITIALIZATION FUNCTIONS ==================
@@ -766,4 +775,18 @@ function renderClusterTiles(clusterConditions) {
     tile.appendChild(conditionsList);
     container.appendChild(tile);
   });
+}
+
+function initializeEventsPage() {
+    // Add any specific initialization for events here
+    const clusterCheckboxes = document.querySelectorAll('.cluster-checkbox');
+    clusterCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', handleClusterSelection);
+    });
+}
+
+function initializeLogsPage() {
+    // Add any specific initialization for logs here
+    const logsCheckbox = document.getElementById('logsCheckbox');
+    logsCheckbox.addEventListener('change', handleLogsSelection);
 }

@@ -41,29 +41,73 @@ function initNavigation() {
     });
 }
 
+// Function to update layout based on window width
+function updateSidebarLayout() {
+    const sidebar = document.querySelector('.sidebar');
+    const mainWrapper = document.querySelector('.main-wrapper');
+    const sidebarToggle = document.getElementById('sidebarToggle');
+
+    if (!sidebar || !mainWrapper || !sidebarToggle) return; // Ensure elements exist
+
+    const isMobile = window.innerWidth <= 800;
+    const isSidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+    
+    // Temporarily disable transitions during width-based layout changes
+    sidebar.style.transition = "none";
+    mainWrapper.style.transition = "none";
+    
+    // Force a reflow to apply the transition: none immediately
+    sidebar.offsetHeight;
+    
+    if (isMobile) {
+        // Mobile view: Remove collapsed class for bottom bar layout
+        sidebar.classList.remove('collapsed');
+        mainWrapper.classList.remove('expanded');
+        sidebarToggle.style.display = 'none';
+    } else {
+        // Desktop view: Apply stored state
+        sidebarToggle.style.display = 'flex';
+        if (isSidebarCollapsed) {
+            sidebar.classList.add('collapsed');
+            mainWrapper.classList.add('expanded');
+        } else {
+            sidebar.classList.remove('collapsed');
+            mainWrapper.classList.remove('expanded');
+        }
+    }
+    
+    // Re-enable transitions after a brief delay
+    setTimeout(() => {
+        sidebar.style.transition = "";
+        mainWrapper.style.transition = "";
+    }, 50);
+}
+
 // Initialize sidebar toggle functionality
 function initSidebarToggle() {
     const sidebarToggle = document.getElementById('sidebarToggle');
     const sidebar = document.querySelector('.sidebar');
     const mainWrapper = document.querySelector('.main-wrapper');
     
-    // Check for stored sidebar state
-    const isSidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
-    
-    // Apply initial state if needed
-    if (isSidebarCollapsed) {
-        sidebar.classList.add('collapsed');
-        mainWrapper.classList.add('expanded');
-    }
-    
-    // Add click handler
+    if (!sidebarToggle || !sidebar || !mainWrapper) return; // Exit if elements not found
+
+    // Click handler for the toggle button (only relevant for desktop)
     sidebarToggle.addEventListener('click', () => {
-        sidebar.classList.toggle('collapsed');
-        mainWrapper.classList.toggle('expanded');
-        
-        // Store the collapsed state in localStorage
-        localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed') ? 'true' : 'false');
+        // Only toggle if in desktop view
+        if (window.innerWidth > 800) { 
+            const isCollapsed = sidebar.classList.toggle('collapsed');
+            mainWrapper.classList.toggle('expanded', isCollapsed);
+
+            // Store the collapsed state in localStorage
+            localStorage.setItem('sidebarCollapsed', isCollapsed ? 'true' : 'false');
+        }
     });
+
+    // Set initial layout based on current width
+    updateSidebarLayout(); 
+    
+    // Update layout on window resize
+    window.addEventListener('resize', updateSidebarLayout);
 }
 
 // Show the selected page and hide others
@@ -86,6 +130,18 @@ function showPage(pageId) {
         if (typeof startMetricsRefresh === 'function') {
             startMetricsRefresh();
         }
+        return;
+    }
+    
+    // Handle events page initialization
+    if (pageId === 'events') {
+        // Add any specific initialization for events here
+        return;
+    }
+    
+    // Handle logs page initialization
+    if (pageId === 'logs') {
+        // Add any specific initialization for logs here
         return;
     }
     

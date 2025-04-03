@@ -21,7 +21,7 @@
                 <ul>
                     <li class="nav-item active" data-page="dashboard">
                         <a href="#dashboard">
-                            <svg class="sidebar-icon" viewBox="0 0 24 24" width="18" height="18">
+                            <svg class="sidebar-icon" viewBox="0 0 24 24" width="24" height="24">
                                 <path fill="currentColor" d="M4 4h4v4H4V4zm0 6h4v4H4v-4zm0 6h4v4H4v-4zm6-12h10v4H10V4zm0 6h10v4H10v-4zm0 6h10v4H10v-4z"/>
                             </svg>
                             <span>Dashboard</span>
@@ -29,17 +29,33 @@
                     </li>
                     <li class="nav-item" data-page="metrics">
                         <a href="#metrics">
-                            <svg class="sidebar-icon" viewBox="0 0 24 24" width="18" height="18">
+                            <svg class="sidebar-icon" viewBox="0 0 24 24" width="24" height="24">
                                 <path fill="currentColor" d="M3 13h2v7H3v-7zm4-7h2v14H7V6zm4 3h2v11h-2V9zm4-3h2v14h-2V6zm4 6h2v8h-2v-8z"/>
                             </svg>
                             <span>Metrics</span>
                         </a>
                     </li>
+                    <li class="nav-item" data-page="events">
+                        <a href="#events">
+                            <svg class="sidebar-icon" viewBox="0 0 24 24" width="24" height="24">
+                                <path fill="currentColor" d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 17h-2v-2h2v2zm0-4h-2V7h2v8z"/>
+                            </svg>
+                            <span>Events</span>
+                        </a>
+                    </li>
+                    <li class="nav-item" data-page="logs">
+                        <a href="#logs">
+                            <svg class="sidebar-icon" viewBox="0 0 24 24" width="24" height="24">
+                                <path fill="currentColor" d="M3 3h18v2H3V3zm0 4h18v2H3V7zm0 4h18v2H3v-2zm0 4h18v2H3v-2zm0 4h18v2H3v-2z"/>
+                            </svg>
+                            <span>Logs</span>
+                        </a>
+                    </li>
                 </ul>
             </nav>
             <button class="sidebar-toggle" id="sidebarToggle" title="Toggle Sidebar">
-                <svg class="toggle-icon" viewBox="0 0 24 24" width="16" height="16">
-                    <path fill="currentColor" d="M15 6L9 12l6 6"/>
+                <svg class="toggle-icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor">
+                    <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
                 </svg>
             </button>
         </div>
@@ -47,89 +63,17 @@
         <div class="main-wrapper">
             <div class="page-content" id="dashboard-page">
                 <header>
-                    <h1>Couchbase Operator Dashboard</h1>
+                    <h1>Cluster Status Dashboard</h1>
                 </header>
                 
                 <!-- New Cluster Status Dashboard Section -->
                 <div class="dashboard-section">
-                    <h2>Cluster Status Dashboard</h2>
                     <div id="clusterTilesContainer" class="cluster-tiles-grid">
                         <!-- Cluster tiles will be dynamically generated here -->
                     </div>
                 </div>
                 
                 <div class="main-content">
-                    <div class="control-section">
-                        <div class="clusters-section">
-                            <h2>Select Clusters</h2>
-                            <div id="clustersContainer" class="clusters-grid">
-                                {{range .}}
-                                <label id="cluster-{{.}}" class="cluster-label">
-                                    <input type="checkbox" class="cluster-checkbox" value="{{.}}">
-                                    <span class="cluster-name">{{.}}</span>
-                                </label>
-                                {{end}}
-                            </div>
-                        </div>
-                        
-                        <div class="logs-control">
-                            <label class="logs-label">
-                                <input type="checkbox" id="logsCheckbox">
-                                <span>Show Operator Logs</span>
-                            </label>
-                            
-                            <div class="logs-options">
-                                <div class="time-control">
-                                    <div class="time-input">
-                                        <label for="startTime">Start Time</label>
-                                        <input type="datetime-local" id="startTime">
-                                    </div>
-                                    
-                                    <div class="time-input">
-                                        <label for="endTime">End Time</label>
-                                        <input type="datetime-local" id="endTime">
-                                    </div>
-                                </div>
-                                
-                                <div class="follow-control">
-                                    <label>
-                                        <input type="checkbox" id="followCheckbox" >
-                                        Follow logs
-                                    </label>
-                                </div>
-                                
-                                <div class="auto-scroll-control">
-                                    <label>
-                                        <input type="checkbox" id="autoScrollCheckbox" checked>
-                                        Auto scroll
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="display-section">
-                        <div id="eventsContainer" class="events-container">
-                            <div class="search-container">
-                                <input type="text" id="eventsSearch" class="search-input" placeholder="Search events...">
-                                <button id="clearEventsSearch" class="clear-search">×</button>
-                            </div>
-                            <div id="eventsSearchResults" class="search-results-container events-search-results"></div>
-                            <div id="eventsContainerData" class="events-container-data">
-                                <!-- Events will be displayed here -->
-                            </div>
-                        </div>
-                        <div id="logsContainer" class="logs-container">
-                            <div class="search-container">
-                                <input type="text" id="logsSearch" class="search-input" placeholder="Search logs...">
-                                <button id="clearLogsSearch" class="clear-search">×</button>
-                            </div>
-                            <div id="logsSearchResults" class="search-results-container logs-search-results"></div>
-                            <div id="logsContainerData" class="logs-container-data">
-                                <!-- Logs will be displayed here -->
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
             
@@ -141,28 +85,105 @@
                 <div class="metrics-dashboard">
                     <div class="metrics-header">
                        <div class="metrics-filter">
-                        <input type="text" id="metricsSearch" placeholder="Filter metrics...">
-                        <select id="metricsType">
-                            <option value="all">All Types</option>
-                            <option value="counter">Counters</option>
-                            <option value="gauge">Gauges</option>
-                            <option value="histogram">Histograms</option>
-                            <option value="summary">Summaries</option>
-                        </select>
-                    </div>
+                            <input type="text" id="metricsSearch" placeholder="Filter metrics...">
+                            <button id="clearMetricsSearch" class="clear-button" title="Clear Search">×</button>
+                            <select id="metricsType">
+                                <option value="all">All Types</option>
+                                <option value="counter">Counters</option>
+                                <option value="gauge">Gauges</option>
+                                <option value="histogram">Histograms</option>
+                                <option value="summary">Summaries</option>
+                            </select>
+                       </div>
                         <!-- The refresh indicator will be inserted here by JS -->
                     </div>
                     
-                    
-                    
-                    <div class="metrics-grid">
-                        <!-- Metrics cards will be generated here -->
-                    </div>
-                    
-                    <div class="metrics-charts">
-                        <div class="charts-container">
-                            <!-- Charts will be generated here -->
+                    <div class="metrics-content">
+                        <div class="metrics-grid">
+                            <!-- Metrics cards will be generated here -->
                         </div>
+                        
+                        <div class="metrics-charts">
+                            <div class="histograms-container">
+                                <!-- Histogram charts will be generated here in a future update -->
+                            </div>
+                            <div class="summaries-container">
+                                <!-- Summary charts will be generated here in a future update -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="page-content hidden" id="events-page">
+                <header>
+                    <h1>Events Dashboard</h1>
+                </header>
+                <div class="control-section">
+                    <div class="clusters-section">
+                        <h2>Select Clusters</h2>
+                        <div id="clustersContainer" class="clusters-grid">
+                            {{range .}}
+                            <label id="cluster-{{.}}" class="cluster-label">
+                                <input type="checkbox" class="cluster-checkbox" value="{{.}}">
+                                <span class="cluster-name">{{.}}</span>
+                            </label>
+                            {{end}}
+                        </div>
+                    </div>
+                </div>
+                <div class="events-container">
+                    <div class="search-container">
+                        <input type="text" id="eventsSearch" class="search-input" placeholder="Search events...">
+                        <button id="clearEventsSearch" class="clear-search">×</button>
+                    </div>
+                    <div id="eventsSearchResults" class="search-results-container events-search-results"></div>
+                    <div id="eventsContainerData" class="events-container-data">
+                        <!-- Events will be displayed here -->
+                    </div>
+                </div>
+            </div>
+            <div class="page-content hidden" id="logs-page">
+                <header>
+                    <h1>Logs Dashboard</h1>
+                </header>
+                <div class="logs-control">
+                    <label class="logs-label">
+                        <input type="checkbox" id="logsCheckbox">
+                        <span>Show Operator Logs</span>
+                    </label>
+                    <div class="logs-options">
+                        <div class="time-control">
+                            <div class="time-input">
+                                <label for="startTime">Start Time</label>
+                                <input type="datetime-local" id="startTime">
+                            </div>
+                            <div class="time-input">
+                                <label for="endTime">End Time</label>
+                                <input type="datetime-local" id="endTime">
+                            </div>
+                        </div>
+                        <div class="follow-control">
+                            <label>
+                                <input type="checkbox" id="followCheckbox">
+                                Follow logs
+                            </label>
+                        </div>
+                        <div class="auto-scroll-control">
+                            <label>
+                                <input type="checkbox" id="autoScrollCheckbox" checked>
+                                Auto scroll
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="logs-container">
+                    <div class="search-container">
+                        <input type="text" id="logsSearch" class="search-input" placeholder="Search logs...">
+                        <button id="clearLogsSearch" class="clear-search">×</button>
+                    </div>
+                    <div id="logsSearchResults" class="search-results-container logs-search-results"></div>
+                    <div id="logsContainerData" class="logs-container-data">
+                        <!-- Logs will be displayed here -->
                     </div>
                 </div>
             </div>
