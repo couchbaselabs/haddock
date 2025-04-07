@@ -1,4 +1,3 @@
-
 // Metrics Dashboard Functionality
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize filter functionality
@@ -18,6 +17,7 @@ let metricsFuse = null; // For fuzzy search
 let currentMetricsData = []; // Store the current metrics data
 const METRICS_SEARCH_DEBOUNCE_DELAY = 300; // Delay in ms for search debounce
 let metricsSearchTimeout = null;
+const metricCardsCache = new Map(); // Cache to store metric cards by metric name
 
 // Cache DOM references
 const DOM = {
@@ -96,28 +96,6 @@ function initializeMetricsFuse(metricsData) {
         });
     }
     
-    // Process histograms
-    metricsData.histograms.forEach(metric => {
-        searchItems.push({
-            name: metric.name,
-            help: metric.help || '',
-            type: 'HISTOGRAM',
-            category: 'histogram',
-            originalData: metric
-        });
-    });
-    
-    // Process summaries
-    metricsData.summaries.forEach(metric => {
-        searchItems.push({
-            name: metric.name,
-            help: metric.help || '',
-            type: 'SUMMARY',
-            category: 'summary',
-            originalData: metric
-        });
-    });
-    
     // Initialize Fuse with the search items
     metricsFuse = new Fuse(searchItems, searchOptions);
     
@@ -156,7 +134,9 @@ async function fetchAndDisplayMetrics() {
         } else {
             // Otherwise render metrics as usual
             renderMetricCards(organizedMetrics.simpleMetrics);
-            renderGraphMetrics(organizedMetrics.histograms, organizedMetrics.summaries);
+            
+            // Add placeholders for histograms and summaries
+            renderHistogramSummaryPlaceholders();
             
             // Apply any active type filters
             const typeSelect = DOM.metricsType();
@@ -170,33 +150,54 @@ async function fetchAndDisplayMetrics() {
     }
 }
 
+// Add placeholders for histograms and summaries
+function renderHistogramSummaryPlaceholders() {
+    const chartsContainer = DOM.chartsContainer();
+    if (!chartsContainer) return;
+    
+    // Clear existing content
+    chartsContainer.innerHTML = '';
+    
+    // Add placeholders
+    const histogramPlaceholder = document.createElement('div');
+    histogramPlaceholder.className = 'coming-soon-container';
+    histogramPlaceholder.innerHTML = `
+        <h3 class="coming-soon-title">Histograms</h3>
+        <p class="coming-soon-description">Histogram visualizations will be available in a future update.</p>
+    `;
+    chartsContainer.appendChild(histogramPlaceholder);
+    
+    const summaryPlaceholder = document.createElement('div');
+    summaryPlaceholder.className = 'coming-soon-container';
+    summaryPlaceholder.innerHTML = `
+        <h3 class="coming-soon-title">Summaries</h3>
+        <p class="coming-soon-description">Summary visualizations will be available in a future update.</p>
+    `;
+    chartsContainer.appendChild(summaryPlaceholder);
+}
+
 // Search metrics using Fuse.js
 function searchMetrics(query) {
     if (!metricsFuse || !query) return;
     
     const results = metricsFuse.search(query);
     
-    // Separate results by category
+    // Get simple metrics from results
     const simpleMetrics = {};
-    const histograms = [];
-    const summaries = [];
     
     results.forEach(result => {
         const item = result.item;
         
         if (item.category === 'simple') {
             simpleMetrics[item.name] = item.originalData;
-        } else if (item.category === 'histogram') {
-            histograms.push(item.originalData);
-        } else if (item.category === 'summary') {
-            summaries.push(item.originalData);
         }
     });
     
     // Render the filtered results
-    if (Object.keys(simpleMetrics).length > 0 || histograms.length > 0 || summaries.length > 0) {
+    if (Object.keys(simpleMetrics).length > 0) {
         renderMetricCards(simpleMetrics);
-        renderGraphMetrics(histograms, summaries);
+        // Add placeholders
+        renderHistogramSummaryPlaceholders();
     } else {
         // Show no results message
         DOM.metricsGrid().innerHTML = '<div class="no-results">No matching metrics found</div>';
@@ -242,10 +243,12 @@ function organizeMetrics(metricsData) {
         // Process based on metric type
         switch (metricFamily.type) {
             case 'HISTOGRAM':
-                processHistogram(metricFamily, metric, result);
+                // Just collecting for future implementation
+                result.histograms.push(metric);
                 break;
             case 'SUMMARY':
-                processSummary(metricFamily, metric, result);
+                // Just collecting for future implementation
+                result.summaries.push(metric);
                 break;
             case 'COUNTER':
             case 'GAUGE':
@@ -255,68 +258,7 @@ function organizeMetrics(metricsData) {
         }
     }
     
-    // Sort for consistent display order
-    result.histograms.sort((a, b) => a.name.localeCompare(b.name));
-    result.summaries.sort((a, b) => a.name.localeCompare(b.name));
-    
     return result;
-}
-
-// Process histogram metrics
-function processHistogram(metricFamily, metric, result) {
-    const histograms = metricFamily.metrics?.filter(m => m.buckets) || [];
-    if (histograms.length === 0) return;
-    
-    const hm = histograms[0];
-    
-    // Process classic histograms (object buckets)
-    if (typeof hm.buckets === 'object' && !Array.isArray(hm.buckets)) {
-        metric.buckets = Object.entries(hm.buckets)
-            .map(([upperBound, count]) => ({
-                le: upperBound === '+Inf' ? Infinity : parseFloat(upperBound),
-                value: parseFloat(count)
-            }))
-            .sort((a, b) => a.le - b.le);
-    } 
-    // Process native histograms (array buckets)
-    else if (Array.isArray(hm.buckets)) {
-        metric.buckets = hm.buckets
-            .filter(bucket => Array.isArray(bucket) && bucket.length >= 4)
-            .map(bucket => ({
-                le: parseFloat(bucket[2]), // end as upper bound
-                value: parseFloat(bucket[3]) // count
-            }))
-            .sort((a, b) => a.le - b.le);
-    }
-    
-    if (metric.buckets && metric.buckets.length > 0) {
-        metric.count = hm.count;
-        metric.sum = hm.sum;
-        metric.labels = hm.labels;
-        result.histograms.push(metric);
-    }
-}
-
-// Process summary metrics
-function processSummary(metricFamily, metric, result) {
-    const summaries = metricFamily.metrics?.filter(m => m.quantiles) || [];
-    if (summaries.length === 0) return;
-    
-    const sm = summaries[0];
-    
-    metric.quantiles = Object.entries(sm.quantiles)
-        .map(([quantile, value]) => ({
-            quantile: parseFloat(quantile),
-            value: parseFloat(value)
-        }))
-        .sort((a, b) => a.quantile - b.quantile);
-    
-    if (metric.quantiles && metric.quantiles.length > 0) {
-        metric.count = sm.count;
-        metric.sum = sm.sum;
-        metric.labels = sm.labels;
-        result.summaries.push(metric);
-    }
 }
 
 // Process simple metrics (counters, gauges, untyped)
@@ -341,15 +283,8 @@ function renderMetricCards(simpleMetrics) {
     if (!metricsGrid) return;
     
     const fragment = document.createDocumentFragment();
-    const existingCards = {};
     const metricStillExists = new Set();
     const orderedElements = [];
-    
-    // Store existing cards in the DOM
-    const existingCardsInDOM = document.querySelectorAll('.metric-card');
-    existingCardsInDOM.forEach(card => {
-        existingCards[card.getAttribute('data-metric-name')] = card;
-    });
     
     // Store metrics and positions for ordering
     const currentMetrics = [];
@@ -376,24 +311,26 @@ function renderMetricCards(simpleMetrics) {
         let card;
         metricStillExists.add(name);
         
-        if (existingCards[name]) {
-            // Reuse existing card
-            card = existingCards[name];
-            // Update value if needed
-            updateMetricCardValue(card, metric);
+        if (metricCardsCache.has(name)) {
+            // Reuse existing card from cache
+            card = metricCardsCache.get(name);
+            // Update values
+            updateMetricCardValues(card, metric);
         } else {
             // Create new card for new metrics
             card = createMetricCard(metric);
+            // Add to cache
+            metricCardsCache.set(name, card);
         }
         
         // Add to ordered elements array
         orderedElements.push(card);
     });
     
-    // Remove cards for metrics that no longer exist
-    for (const metricName in existingCards) {
+    // Remove cards for metrics that no longer exist from the cache
+    for (const [metricName, cardElement] of metricCardsCache.entries()) {
         if (!metricStillExists.has(metricName)) {
-            existingCards[metricName].remove();
+            metricCardsCache.delete(metricName);
         }
     }
     
@@ -402,28 +339,10 @@ function renderMetricCards(simpleMetrics) {
         return;
     }
 
-    if (metricsGrid.children.length === 0) {
-        orderedElements.forEach(elem => fragment.appendChild(elem));
-        metricsGrid.appendChild(fragment);
-        return;
-    }
-
-    // Check if the order or content has changed
-    let needsUpdate = metricsGrid.children.length !== orderedElements.length;
-    if (!needsUpdate) {
-        for (let i = 0; i < orderedElements.length; i++) {
-            if (metricsGrid.children[i] !== orderedElements[i]) {
-                needsUpdate = true;
-                break;
-            }
-        }
-    }
-
-    if (needsUpdate) {
-        orderedElements.forEach(elem => fragment.appendChild(elem));
-        metricsGrid.innerHTML = '';
-        metricsGrid.appendChild(fragment);
-    }
+    // Update the metrics grid with ordered elements
+    orderedElements.forEach(elem => fragment.appendChild(elem));
+    metricsGrid.innerHTML = '';
+    metricsGrid.appendChild(fragment);
 }
 
 // Create a new metric card
@@ -457,40 +376,165 @@ function createMetricCard(metric) {
     metricHeader.appendChild(metricType);
     card.appendChild(metricHeader);
     
-    // Create value display
-    const valueElement = document.createElement('div');
-    valueElement.className = 'metric-value';
-    
-    if (metric.values && metric.values.length > 0) {
-        valueElement.textContent = formatMetricValue(metric.values[0].value, metric.name);
+    // Add help text if available
+    if (metric.help) {
+        const helpText = document.createElement('div');
+        helpText.className = 'metric-help';
+        helpText.textContent = metric.help;
+        card.appendChild(helpText);
     }
     
-    card.appendChild(valueElement);
+    // Create container for metric values
+    const valuesContainer = document.createElement('div');
+    valuesContainer.className = 'metric-values-container';
+    
+    // Create entries for each value/label combination
+    if (metric.values && metric.values.length > 0) {
+        metric.values.forEach((valueObj) => {
+            const entry = createMetricValueEntry(valueObj);
+            valuesContainer.appendChild(entry);
+        });
+    }
+    
+    card.appendChild(valuesContainer);
     
     return card;
 }
 
-// Update metric card value with animation
-function updateMetricCardValue(card, metric) {
+// Create an entry for a single metric value with its labels
+function createMetricValueEntry(valueObj) {
+    const entry = document.createElement('div');
+    entry.className = 'metric-entry';
+    
+    // Create unique ID for this entry based on labels
+    const entryId = generateEntryId(valueObj.labels);
+    entry.setAttribute('data-entry-id', entryId);
+    
+    // Create content wrapper for better alignment
+    const entryContent = document.createElement('div');
+    entryContent.className = 'metric-entry-content';
+    
+    // Labels wrapper
+    const labelsWrapper = document.createElement('div');
+    labelsWrapper.className = 'metric-labels-wrapper';
+    
+    // Add labels section if there are labels
+    if (Object.keys(valueObj.labels).length > 0) {
+        const labelsContainer = document.createElement('div');
+        labelsContainer.className = 'metric-labels';
+        
+        for (const [key, value] of Object.entries(valueObj.labels)) {
+            const label = document.createElement('div');
+            label.className = 'metric-label';
+            label.innerHTML = `<span class="metric-label-key">${key}</span>: ${value}`;
+            labelsContainer.appendChild(label);
+        }
+        
+        labelsWrapper.appendChild(labelsContainer);
+    } else {
+        // For metrics without labels, add a placeholder
+        const noLabelsText = document.createElement('div');
+        noLabelsText.className = 'metric-labels';
+        noLabelsText.innerHTML = '<div class="metric-label">No labels</div>';
+        labelsWrapper.appendChild(noLabelsText);
+    }
+    
+    // Value wrapper
+    const valueWrapper = document.createElement('div');
+    valueWrapper.className = 'metric-value-wrapper';
+    
+    // Add value
+    const valueDisplay = document.createElement('div');
+    valueDisplay.className = 'metric-value';
+    valueDisplay.textContent = formatMetricValue(valueObj.value, valueObj.labels);
+    valueWrapper.appendChild(valueDisplay);
+    
+    // Add both to content wrapper
+    entryContent.appendChild(labelsWrapper);
+    entryContent.appendChild(valueWrapper);
+    
+    // Add content wrapper to entry
+    entry.appendChild(entryContent);
+    
+    return entry;
+}
+
+// Generate a unique ID for an entry based on its labels
+function generateEntryId(labels) {
+    if (!labels || Object.keys(labels).length === 0) {
+        return 'no-labels';
+    }
+    
+    return Object.entries(labels)
+        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+        .map(([key, value]) => `${key}:${value}`)
+        .join(',');
+}
+
+// Update all values in a metric card
+function updateMetricCardValues(card, metric) {
     if (!metric.values || metric.values.length === 0) return;
     
-    const valueDisplay = card.querySelector('.metric-value');
-    const newValue = formatMetricValue(metric.values[0].value, metric.name);
+    const valuesContainer = card.querySelector('.metric-values-container');
+    if (!valuesContainer) return;
+    
+    // Keep track of entries we've updated
+    const updatedEntries = new Set();
+    
+    // Update existing entries and create new ones as needed
+    metric.values.forEach(valueObj => {
+        const entryId = generateEntryId(valueObj.labels);
+        updatedEntries.add(entryId);
+        
+        // Find existing entry
+        let entry = valuesContainer.querySelector(`[data-entry-id="${entryId}"]`);
+        
+        if (entry) {
+            // Update existing entry
+            updateMetricValueEntry(entry, valueObj);
+        } else {
+            // Create new entry
+            entry = createMetricValueEntry(valueObj);
+            valuesContainer.appendChild(entry);
+        }
+    });
+    
+    // Remove entries that no longer exist
+    valuesContainer.querySelectorAll('.metric-entry').forEach(entry => {
+        const entryId = entry.getAttribute('data-entry-id');
+        if (!updatedEntries.has(entryId)) {
+            entry.remove();
+        }
+    });
+}
+
+// Update a single metric value entry
+function updateMetricValueEntry(entry, valueObj) {
+    const valueDisplay = entry.querySelector('.metric-value');
+    if (!valueDisplay) return;
+    
+    const newValue = formatMetricValue(valueObj.value, valueObj.labels);
     
     if (valueDisplay.textContent !== newValue) {
         valueDisplay.textContent = newValue;
         // Add flash animation
         valueDisplay.classList.remove('value-updated');
-        setTimeout(() => valueDisplay.classList.add('value-updated'), 10);
+        // Force a reflow to restart the animation
+        void valueDisplay.offsetWidth;
+        valueDisplay.classList.add('value-updated');
     }
 }
 
 // Format metric values for display with appropriate units
-function formatMetricValue(value, metricName) {
+function formatMetricValue(value, labels) {
     if (typeof value !== 'number') return value.toString();
     
-    // Convert bytes to MB if applicable
-    if (metricName && isLikelyBytes(metricName)) {
+    // Check for byte metrics using labels and metric name
+    if (labels && (
+        labels.unit === 'bytes' || 
+        (typeof labels.metric_name === 'string' && 
+         isLikelyBytes(labels.metric_name))
+    )) {
         return formatBytes(value);
     }
     
@@ -544,8 +588,8 @@ function setupMetricsFiltering() {
     }
     
     if (searchInput) {
-        // Add fuzzy search functionality
-        searchInput.addEventListener('keydown', () => {
+        // Add search functionality
+        searchInput.addEventListener('input', () => {
             const query = searchInput.value.trim();
             
             // Clear any previous timeout
@@ -585,15 +629,9 @@ function filterMetrics() {
     
     // If "all" is selected, show everything
     if (filterType === 'all') {
-        document.querySelectorAll('.metric-card, .chart-wrapper').forEach(el => {
+        document.querySelectorAll('.metric-card, .coming-soon-container').forEach(el => {
             el.style.display = 'block';
         });
-        
-        // Make sure chart sections are visible
-        document.querySelectorAll('.chart-section').forEach(section => {
-            section.style.display = 'block';
-        });
-        
         return;
     }
     
@@ -603,354 +641,15 @@ function filterMetrics() {
         card.style.display = cardType === filterType ? 'block' : 'none';
     });
     
-    // Filter chart wrappers based on section type
-    document.querySelectorAll('.chart-section').forEach(section => {
-        const isHistogram = section.querySelector('h3')?.textContent === 'Histograms';
-        const isSummary = section.querySelector('h3')?.textContent === 'Summaries';
+    // Show or hide placeholders based on filter
+    document.querySelectorAll('.coming-soon-container').forEach(container => {
+        const title = container.querySelector('.coming-soon-title').textContent;
         
-        // Show/hide entire sections based on filter
-        if ((isHistogram && filterType === 'histogram') || 
-            (isSummary && filterType === 'summary')) {
-            section.style.display = 'block';
+        if ((title === 'Histograms' && filterType === 'histogram') || 
+            (title === 'Summaries' && filterType === 'summary')) {
+            container.style.display = 'block';
         } else {
-            section.style.display = 'none';
+            container.style.display = 'none';
         }
     });
-}
-
-// Render chart wrappers for histogram and summary metrics
-function renderGraphMetrics(histograms, summaries) {
-    const chartsContainer = DOM.chartsContainer();
-    if (!chartsContainer) return;
-    
-    // Create or find sections and render content
-    if (histograms.length > 0) {
-        renderChartSection(chartsContainer, 'Histograms', histograms, createHistogramChart, updateHistogramChart);
-    }
-    
-    if (summaries.length > 0) {
-        renderChartSection(chartsContainer, 'Summaries', summaries, createSummaryChart, updateSummaryChart);
-    }
-    
-    // Remove empty sections
-    document.querySelectorAll('.chart-section').forEach(section => {
-        const grid = section.querySelector('.chart-grid');
-        if (!grid || grid.children.length === 0) {
-            section.remove();
-        }
-    });
-}
-
-// Helper function to render a section of charts
-function renderChartSection(container, title, metrics, createChartFn, updateChartFn) {
-    // Find or create section
-    let section = null;
-    document.querySelectorAll('.chart-section').forEach(s => {
-        if (s.querySelector('h3')?.textContent === title) {
-            section = s;
-        }
-    });
-    
-    if (!section) {
-        section = document.createElement('div');
-        section.className = 'chart-section';
-        section.innerHTML = `<h3>${title}</h3>`;
-        
-        const grid = document.createElement('div');
-        grid.className = 'chart-grid';
-        section.appendChild(grid);
-        
-        container.appendChild(section);
-    }
-    
-    const grid = section.querySelector('.chart-grid');
-    
-    // Store existing chart wrappers
-    const existingCharts = {};
-    grid.querySelectorAll('.chart-wrapper').forEach(wrapper => {
-        existingCharts[wrapper.getAttribute('data-metric-name')] = wrapper;
-    });
-    
-    // Keep track of metrics that still exist
-    const metricsStillExist = new Set();
-    
-    // Create document fragment for efficient DOM manipulation
-    const fragment = document.createDocumentFragment();
-    const orderedWrappers = [];
-    
-    // Process each metric
-    metrics.forEach(metric => {
-        let wrapper;
-        metricsStillExist.add(metric.name);
-        
-        if (existingCharts[metric.name]) {
-            // Reuse existing wrapper
-            wrapper = existingCharts[metric.name];
-            
-            // Update chart data
-            const canvas = wrapper.querySelector('canvas');
-            const chartInstance = Chart.getChart(canvas);
-            
-            if (chartInstance) {
-                updateChartFn(chartInstance, metric);
-            } else {
-                // If chart instance is lost, recreate it
-                createChartFn(canvas, metric);
-            }
-        } else {
-            // Create new wrapper and chart
-            wrapper = document.createElement('div');
-            wrapper.className = 'chart-wrapper';
-            wrapper.setAttribute('data-metric-name', metric.name);
-            
-            const canvas = document.createElement('canvas');
-            wrapper.appendChild(canvas);
-            
-            // Create chart after DOM insertion
-            createChartFn(canvas, metric);
-        }
-        
-        orderedWrappers.push(wrapper);
-    });
-    
-    if (orderedWrappers.length === 0) {
-        return;
-    }
-
-    // Check if the grid needs updating
-    let needsUpdate = grid.children.length !== orderedWrappers.length;
-    if (!needsUpdate) {
-        // Only check until we find a difference
-        for (let i = 0; i < orderedWrappers.length; i++) {
-            if (grid.children[i] !== orderedWrappers[i]) {
-                needsUpdate = true;
-                break;
-            }
-        }
-    }
-
-    if (needsUpdate) {
-        orderedWrappers.forEach(wrapper => fragment.appendChild(wrapper));
-        grid.innerHTML = '';
-        grid.appendChild(fragment);
-    }
-
-    // Remove wrappers for metrics that no longer exist
-    Object.keys(existingCharts).forEach(name => {
-        if (!metricsStillExist.has(name)) {
-            existingCharts[name].remove();
-        }
-    });
-}
-
-// Create a histogram chart using Chart.js
-function createHistogramChart(canvas, metric) {
-    const buckets = metric.buckets || [];
-    if (buckets.length === 0) return null;
-    
-    // Convert to non-cumulative data for display
-    const { labels, values } = convertBucketsToNonCumulative(buckets);
-    
-    return new Chart(canvas, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: formatMetricTitle(metric.name),
-                data: values,
-                backgroundColor: 'rgba(66, 133, 244, 0.5)', // Google Blue
-                borderColor: '#4285F4',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                title: {
-                    display: true,
-                    text: formatMetricTitle(metric.name),
-                    font: {
-                        size: 14,
-                        weight: 'bold'
-                    }
-                },
-                tooltip: {
-                    callbacks: {
-                        title: function(context) {
-                            return `Bucket ${context[0].label}`;
-                        },
-                        label: function(context) {
-                            return `Count: ${context.raw}`;
-                        },
-                        afterLabel: function(context) {
-                            return `Cumulative: ${buckets[context.dataIndex].value}`;
-                        }
-                    }
-                },
-                legend: {
-                    display: false
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: 'Frequency'
-                    }
-                },
-                x: {
-                    title: {
-                        display: true,
-                        text: 'Bucket Upper Bound'
-                    }
-                }
-            }
-        }
-    });
-}
-
-// Convert histogram buckets to non-cumulative display data
-function convertBucketsToNonCumulative(buckets) {
-    const labels = [];
-    const values = [];
-    
-    for (let i = 0; i < buckets.length; i++) {
-        const bucketLabel = buckets[i].le === Infinity ? '+Inf' : buckets[i].le.toString();
-        labels.push(bucketLabel);
-        
-        if (i === 0) {
-            values.push(buckets[i].value);
-        } else {
-            // Convert cumulative to incremental
-            const incrementalValue = buckets[i].value - buckets[i-1].value;
-            values.push(incrementalValue >= 0 ? incrementalValue : 0); // Ensure non-negative
-        }
-    }
-    
-    return { labels, values };
-}
-
-// Update an existing histogram chart with new data
-function updateHistogramChart(chart, metric) {
-    const buckets = metric.buckets || [];
-    if (buckets.length === 0) return;
-    
-    // Convert to non-cumulative data for display
-    const { labels, values } = convertBucketsToNonCumulative(buckets);
-    
-    // Update chart data
-    chart.data.labels = labels;
-    chart.data.datasets[0].data = values;
-    chart.options.plugins.title.text = formatMetricTitle(metric.name);
-    chart.data.datasets[0].label = formatMetricTitle(metric.name);
-    
-    chart.update('none'); // Use 'none' animation mode for performance
-}
-
-// Create a summary chart using Chart.js
-function createSummaryChart(canvas, metric) {
-    const quantiles = metric.quantiles || [];
-    if (quantiles.length === 0) return null;
-    
-    // Process quantiles for display
-    const labels = quantiles.map(q => `p${Math.round(q.quantile * 100)}`);
-    const values = quantiles.map(q => q.value);
-    
-    return new Chart(canvas, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: formatMetricTitle(metric.name),
-                data: values,
-                backgroundColor: 'rgba(234, 67, 53, 0.2)', // Google Red
-                borderColor: '#EA4335',
-                borderWidth: 2,
-                pointBackgroundColor: '#EA4335',
-                pointRadius: 5,
-                pointHoverRadius: 7,
-                tension: 0.1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                title: {
-                    display: true,
-                    text: formatMetricTitle(metric.name),
-                    font: {
-                        size: 14,
-                        weight: 'bold'
-                    }
-                },
-                tooltip: {
-                    callbacks: {
-                        title: function(context) {
-                            const quantileIndex = context[0].dataIndex;
-                            return `Quantile: ${quantiles[quantileIndex].quantile}`;
-                        },
-                        label: function(context) {
-                            return `Value: ${context.raw}`;
-                        },
-                        afterLabel: function(context) {
-                            if (metric.count && metric.sum) {
-                                return [
-                                    `Count: ${metric.count}`,
-                                    `Sum: ${metric.sum}`
-                                ];
-                            }
-                            return null;
-                        }
-                    }
-                },
-                legend: {
-                    display: false
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: false,
-                    title: {
-                        display: true,
-                        text: 'Value'
-                    }
-                },
-                x: {
-                    title: {
-                        display: true,
-                        text: 'Percentile'
-                    }
-                }
-            }
-        }
-    });
-}
-
-// Update an existing summary chart with new data
-function updateSummaryChart(chart, metric) {
-    const quantiles = metric.quantiles || [];
-    if (quantiles.length === 0) return;
-    
-    // Process quantiles for display
-    const labels = quantiles.map(q => `p${Math.round(q.quantile * 100)}`);
-    const values = quantiles.map(q => q.value);
-    
-    // Update chart data
-    chart.data.labels = labels;
-    chart.data.datasets[0].data = values;
-    chart.options.plugins.title.text = formatMetricTitle(metric.name);
-    chart.data.datasets[0].label = formatMetricTitle(metric.name);
-    
-    chart.update('none'); // Use 'none' animation mode for performance
-}
-
-// Format metric title for display
-function formatMetricTitle(name) {
-    return name
-        .replace(/_/g, ' ')  // Replace underscores with spaces
-        .replace(/([a-z])([A-Z])/g, '$1 $2')  // Add space before capital letters
-        .replace(/\b\w/g, c => c.toUpperCase());  // Capitalize first letter of each word
 } 
