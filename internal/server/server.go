@@ -38,6 +38,7 @@ type Server struct {
 	eventCacheMutex    sync.RWMutex
 	clientset          *kubernetes.Clientset
 	dynamicClient      dynamic.Interface
+	allowedMetrics     map[string]bool
 }
 
 func NewServer() *Server {
@@ -48,6 +49,20 @@ func NewServer() *Server {
 		broadcast:         make(chan utils.Message),
 		clusterConditions: make(map[string][]map[string]interface{}),
 		eventCache:        make(map[string][]utils.Message),
+		allowedMetrics: map[string]bool{
+			"couchbase_operator_cpu_under_management":               true,
+			"couchbase_operator_in_place_upgrade_failures":          true,
+			"couchbase_operator_memory_under_management_bytes":      true,
+			"couchbase_operator_reconcile_failures":                 true,
+			"couchbase_operator_pod_replacements_failed":            true,
+			"couchbase_operator_pod_recovery_failures_total":        true,
+			"couchbase_operator_pod_recoveries_total":               true,
+			"couchbase_operator_swap_rebalance_failures":            true,
+			"couchbase_operator_swap_rebalances_total":              true,
+			"couchbase_operator_volume_size_under_management_bytes": true,
+			"couchbase_operator_pod_replacements_total":             true,
+			"couchbase_operator_in_place_upgrades_total":            true,
+		},
 	}
 }
 

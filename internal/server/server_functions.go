@@ -800,7 +800,12 @@ func (s *Server) handleMetricsEndpoint(w http.ResponseWriter, r *http.Request) {
 		// Convert the metrics channel to prom2json format
 		var result []*prom2json.Family
 		for mf := range mfChan {
-			result = append(result, prom2json.NewFamily(mf))
+			// Only include metrics that are in the allowedMetrics map
+			//fmt.Println("this is the metric name", mf.GetName())
+			if s.allowedMetrics[mf.GetName()] {
+				//fmt.Println("this is the true metric name", mf.GetName())
+				result = append(result, prom2json.NewFamily(mf))
+			}
 		}
 
 		// Marshal to JSON
