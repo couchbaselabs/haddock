@@ -23,12 +23,11 @@ type LogEntry struct {
 	Cluster string    `json:"cluster,omitempty"`
 }
 
-func StartLogWatcher(ctx context.Context, clientset *kubernetes.Clientset, broadcast chan<- utils.Message, startTime, endTime *time.Time, follow bool, clusterName string, logSessionId string) {
+func StartLogWatcher(ctx context.Context, clientset *kubernetes.Clientset, broadcast chan<- utils.Message, startTime, endTime *time.Time, follow bool, clusterNames map[string]bool, logSessionId string) {
 	namespace := os.Getenv("WATCH_NAMESPACE")
 	if namespace == "" {
 		logger.Log.Fatal("WATCH_NAMESPACE environment variable not set - log watching disabled",
-			zap.String("sessionId", logSessionId),
-			zap.String("clusterName", clusterName))
+			zap.String("sessionId", logSessionId))
 		return
 	}
 
@@ -36,7 +35,6 @@ func StartLogWatcher(ctx context.Context, clientset *kubernetes.Clientset, broad
 	logContext := []zap.Field{
 		zap.String("namespace", namespace),
 		zap.String("sessionId", logSessionId),
-		zap.String("clusterName", clusterName),
 		zap.Bool("follow", follow),
 	}
 	if startTime != nil {
@@ -101,6 +99,9 @@ func StartLogWatcher(ctx context.Context, clientset *kubernetes.Clientset, broad
 	// Process log stream
 	reader := bufio.NewReader(stream)
 	lineCount := 0
+	namespacePrefix := namespace + "/"
+	namespacePrefixLen := len(namespacePrefix)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -140,10 +141,18 @@ func StartLogWatcher(ctx context.Context, clientset *kubernetes.Clientset, broad
 					return
 				}
 
-				// If clusterName is specified, only send logs for that cluster
-				if clusterName != "" && (logEntry.Cluster == "" || logEntry.Cluster != namespace+"/"+clusterName) {
-					continue
+				// Handle log filtering based on cluster
+				if logEntry.Cluster != "" {
+					// Skip logs if they don't match any cluster in our map
+					if len(clusterNames) > 0 {
+						clusterName := logEntry.Cluster[namespacePrefixLen:]
+						if !clusterNames[clusterName] {
+							continue
+						}
+
+					}
 				}
+				// If no cluster field or it passed the filter, we'll send it
 			}
 
 			// Send log line to client

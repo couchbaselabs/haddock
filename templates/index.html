@@ -179,6 +179,17 @@
                                 Auto scroll
                             </label>
                         </div>
+                        <div class="logs-cluster-selection">
+                            <label class="logs-cluster-heading">Select Clusters</label>
+                            <div id="logsClusterContainer" class="logs-clusters-grid">
+                                {{range .}}
+                                <label id="logs-cluster-{{.}}" class="logs-cluster-label">
+                                    <input type="checkbox" class="logs-cluster-checkbox" value="{{.}}">
+                                    <span class="logs-cluster-name">{{.}}</span>
+                                </label>
+                                {{end}}
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="logs-container">

@@ -118,7 +118,7 @@ function initializeControls() {
                 follow: followCheckbox.checked,
                 startTime: rfcStart,
                 endTime: rfcEnd,
-                clusterName: clusterName
+                clusterMap: { [clusterName]: true }
             };
 
             socket.send(JSON.stringify(request));

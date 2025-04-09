@@ -147,13 +147,13 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var request struct {
-			Type        string   `json:"type"`
-			Clusters    []string `json:"clusters,omitempty"`
-			SessionID   string   `json:"sessionId,omitempty"`
-			StartTime   string   `json:"startTime,omitempty"`
-			EndTime     string   `json:"endTime,omitempty"`
-			Follow      bool     `json:"follow,omitempty"`
-			ClusterName string   `json:"clusterName,omitempty"`
+			Type       string          `json:"type"`
+			Clusters   []string        `json:"clusters,omitempty"`
+			SessionID  string          `json:"sessionId,omitempty"`
+			StartTime  string          `json:"startTime,omitempty"`
+			EndTime    string          `json:"endTime,omitempty"`
+			Follow     bool            `json:"follow,omitempty"`
+			ClusterMap map[string]bool `json:"clusterMap,omitempty"`
 		}
 		if err := json.Unmarshal(message, &request); err != nil {
 			logger.Log.Error("Failed to parse client message",
@@ -224,7 +224,7 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 
-				s.startLogWatcher(client, startTime, endTime, request.Follow, request.ClusterName, client.logSessionId)
+				s.startLogWatcher(client, startTime, endTime, request.Follow, request.ClusterMap, client.logSessionId)
 			} else {
 				// Stop log watcher if session ID is empty
 				if client.logWatcher != nil {
@@ -319,10 +319,10 @@ func (s *Server) cleanupEventWatchers() {
 	}
 }
 
-func (s *Server) startLogWatcher(client *Client, startTime, endTime *time.Time, follow bool, clusterName string, logSessionId string) {
+func (s *Server) startLogWatcher(client *Client, startTime, endTime *time.Time, follow bool, clusterNames map[string]bool, logSessionId string) {
 	logContext := []zap.Field{
 		zap.String("sessionId", logSessionId),
-		zap.String("clusterName", clusterName),
+		zap.Any("clusterNames", clusterNames),
 		zap.Bool("follow", follow),
 	}
 
@@ -338,7 +338,7 @@ func (s *Server) startLogWatcher(client *Client, startTime, endTime *time.Time, 
 
 	ctx, cancel := context.WithCancel(context.Background())
 	client.logWatcher = cancel
-	go logs.StartLogWatcher(ctx, s.clientset, s.broadcast, startTime, endTime, follow, clusterName, logSessionId)
+	go logs.StartLogWatcher(ctx, s.clientset, s.broadcast, startTime, endTime, follow, clusterNames, logSessionId)
 }
 
 func (s *Server) handleMessages() {

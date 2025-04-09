@@ -186,6 +186,14 @@ function initializeFuse() {
 }
 
 // ==================== EVENT HANDLERS ====================
+function handleLogsClusterSelection() {
+    // If logs are active, resubscribe with the new cluster selection
+    const logsCheckbox = document.getElementById('logsCheckbox');
+    if (logsCheckbox && logsCheckbox.checked) {
+        handleLogsSelection({ target: logsCheckbox });
+    }
+}
+
 function handleLogsSelection(event) {
     const logsContainerData = document.getElementById('logsContainerData');
     logFragment = document.createDocumentFragment();
@@ -218,12 +226,23 @@ function handleLogsSelection(event) {
             rfcEnd = endDate.toISOString(); 
         }
 
+        // Get selected clusters and build the clusterMap
+        const selectedClusters = Array.from(document.querySelectorAll('.logs-cluster-checkbox:checked')).map(cb => cb.value);
+        const clusterMap = {};
+        
+        // Add each selected cluster to the map
+        selectedClusters.forEach(cluster => {
+            clusterMap[cluster] = true;
+        });
+
+        // Prepare the request
         const request = {
             type: "logs",
             sessionId: currentLogSessionId,
             follow: followCheckbox.checked,
             startTime: rfcStart,
-            endTime: rfcEnd
+            endTime: rfcEnd,
+            clusterMap: clusterMap
         };
 
         socket.send(JSON.stringify(request));
@@ -385,31 +404,49 @@ function searchLogs(query) {
 
 // ==================== DATA UPDATE FUNCTIONS ====================
 function updateClusters(clusters) {
-    const container = document.getElementById("clustersContainer");
+    // Update events page clusters
+    updateClusterContainer("clustersContainer", "cluster-checkbox", clusters, handleClusterSelection);
+    
+    // Update logs page clusters
+    updateClusterContainer("logsClusterContainer", "logs-cluster-checkbox", clusters, handleLogsClusterSelection);
+}
+
+// Helper function to update a cluster container
+function updateClusterContainer(containerId, checkboxClass, clusters, changeHandler) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
 
     // Add new clusters
     clusters.forEach(cluster => {
-        if (!document.getElementById(`cluster-${cluster}`)) {
+        const elementId = containerId === "clustersContainer" ? 
+            `cluster-${cluster}` : `logs-cluster-${cluster}`;
+            
+        if (!document.getElementById(elementId)) {
             const label = document.createElement("label");
-            label.id = `cluster-${cluster}`;
-            label.className = "cluster-label";
+            label.id = elementId;
+            label.className = containerId === "clustersContainer" ? 
+                "cluster-label" : "logs-cluster-label";
+                
             label.innerHTML = `
-                <input type="checkbox" class="cluster-checkbox" value="${cluster}">
-                <span class="cluster-name">${cluster}</span>
+                <input type="checkbox" class="${checkboxClass}" value="${cluster}">
+                <span class="${containerId === "clustersContainer" ? 'cluster-name' : 'logs-cluster-name'}">${cluster}</span>
             `;
             container.appendChild(label);
             
             // Add event listener to new checkbox
-            const checkbox = label.querySelector('.cluster-checkbox');
-            checkbox.addEventListener('change', handleClusterSelection);
+            const checkbox = label.querySelector(`.${checkboxClass}`);
+            checkbox.addEventListener('change', changeHandler);
         }
     });
 
     // Remove old clusters
-    const existingLabels = container.getElementsByClassName('cluster-label');
+    const existingLabels = container.getElementsByClassName(
+        containerId === "clustersContainer" ? "cluster-label" : "logs-cluster-label"
+    );
+    
     Array.from(existingLabels).forEach(label => {
-        const cluster = label.querySelector('.cluster-checkbox').value;
-        if (!clusters.includes(cluster)) {
+        const checkbox = label.querySelector(`.${checkboxClass}`);
+        if (checkbox && !clusters.includes(checkbox.value)) {
             label.remove();
         }
     });
@@ -786,7 +823,15 @@ function initializeEventsPage() {
 }
 
 function initializeLogsPage() {
-    // Add any specific initialization for logs here
+    // Initialize logs checkbox
     const logsCheckbox = document.getElementById('logsCheckbox');
-    logsCheckbox.addEventListener('change', handleLogsSelection);
+    if (logsCheckbox) {
+        logsCheckbox.addEventListener('change', handleLogsSelection);
+    }
+    
+    // Initialize cluster checkboxes for logs
+    const logClusterCheckboxes = document.querySelectorAll('.logs-cluster-checkbox');
+    logClusterCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', handleLogsClusterSelection);
+    });
 }
