@@ -181,6 +181,9 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 
 				// Send cached events for this cluster
 				go s.sendCachedEvents(client, cluster)
+				/*if !client.watchEventslist[cluster] {
+					go s.sendCachedEvents(client, cluster)
+				}*/
 			}
 			s.cleanupEventWatchers()
 

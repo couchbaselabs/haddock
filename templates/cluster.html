@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="/static/css/status.css">
     <!-- External JavaScript file reference -->
     <script src="/static/js/fuse.js"></script>
-    <script src="/static/js/cluster-details.js" defer></script>
+    <script type="module" src="/static/js/cluster-details.js"></script>
 </head>
 <body>
     <!-- Hidden element to store cluster name for JavaScript -->
@@ -35,36 +35,54 @@
 
         <div class="monitoring-section">
             <div class="monitoring-controls">
-                <div class="control-group">
-                    <label>
-                        <input type="checkbox" id="watchEventsCheckbox">
-                        Watch Events
-                    </label>
+                
+                <!-- Event Options Container -->
+                <div class="control-panel event-options">
+                    <h3>Event Options</h3>
+                    <div class="control-group">
+                        <label>
+                            <input type="checkbox" id="watchEventsCheckbox">
+                            Watch Events
+                        </label>
+                    </div>
+                    <div class="control-group">
+                        <label>
+                            <input type="checkbox" id="autoScrollEventsCheckbox" checked>
+                            Auto-scroll Events
+                        </label>
+                    </div>
                 </div>
-                <div class="control-group">
-                    <label>
-                        <input type="checkbox" id="logsCheckbox">
-                        Watch Logs
-                    </label>
-                    <label>
-                        <input type="checkbox" id="followCheckbox" checked>
-                        Follow
-                    </label>
-                    <label>
-                        <input type="checkbox" id="autoScrollCheckbox" checked>
-                        Auto-scroll
-                    </label>
-                </div>
-                <div class="control-group">
-                    <label>Start Time:
-                        <input type="datetime-local" id="startTime">
-                    </label>
-                    <label>End Time:
-                        <input type="datetime-local" id="endTime">
-                    </label>
+
+                <!-- Log Options Container -->
+                <div class="control-panel log-options">
+                    <h3>Log Options</h3>
+                    <div class="control-group">
+                        <label>
+                            <input type="checkbox" id="logsCheckbox">
+                            Watch Logs
+                        </label>
+                        <label>
+                            <input type="checkbox" id="followCheckbox" checked>
+                            Follow Logs
+                        </label>
+                    </div>
+                    <div class="control-group time-inputs">
+                        <label>Start Time:
+                            <input type="datetime-local" id="startTime">
+                        </label>
+                        <label>End Time:
+                            <input type="datetime-local" id="endTime">
+                        </label>
+                    </div>
+                     <div class="control-group">
+                        <label>
+                            <input type="checkbox" id="autoScrollLogsCheckbox" checked>
+                            Auto-scroll Logs
+                        </label>
+                    </div>
                 </div>
             </div>
-
+            
             <div class="content-section">
                 <div class="events-section">
                     <div class="search-container">

@@ -23,12 +23,13 @@
 /* Control Section */
 .control-section {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: var(--spacing-lg);
     padding: var(--spacing-md);
     background: var(--background-light);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
+    margin-bottom: var(--spacing-xl);
 }
 
 .clusters-section {
@@ -477,4 +478,61 @@
     .events-section {
         height: 500px;
     }
+}
+
+/* Add styling for event entries to match the new structure */
+.event-entry {
+    background-color: var(--background-light);
+    padding: var(--spacing-md);
+    border-radius: var(--radius-sm);
+    margin-bottom: var(--spacing-sm);
+    box-shadow: var(--shadow-sm);
+    border-left: 3px solid var(--primary-color);
+    transition: all 0.2s ease;
+}
+
+.event-entry:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+
+.event-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-sm);
+    font-size: 13px;
+    color: var(--medium-text);
+    align-items: center;
+}
+
+.event-kind {
+    font-weight: 600;
+    color: var(--primary-color);
+    background-color: var(--primary-light);
+    padding: 3px 8px;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.event-object-name {
+    font-weight: 500;
+    color: var(--dark-text);
+    padding: 3px 0;
+    display: inline-block;
+}
+
+.event-time {
+    margin-left: auto;
+}
+
+.event-message {
+    font-size: 14px;
+    color: var(--dark-text);
+    line-height: 1.6;
+    word-break: break-word;
+    padding: 4px 0;
+    white-space: pre-line;
+    position: relative;
+    margin-left: 4px;
 } 

@@ -303,6 +303,104 @@
     border-radius: var(--radius-lg);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     padding: 24px;
+    margin-top: var(--spacing-xl);
+}
+
+.monitoring-controls {
+    display: flex;
+    flex-wrap: wrap; /* Allow wrapping on smaller screens */
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-xl);
+    padding: var(--spacing-md);
+    background-color: var(--background-light);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+}
+
+.control-panel {
+    flex: 1; /* Each panel takes equal space */
+    min-width: 300px; /* Minimum width before wrapping */
+    padding: var(--spacing-md);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background-color: #fdfdfd;
+}
+
+.control-panel h3 {
+    margin-top: 0;
+    margin-bottom: var(--spacing-md);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--dark-text);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: var(--spacing-sm);
+}
+
+.control-group {
+    display: flex;
+    flex-direction: row; /* Arrange items horizontally */
+    flex-wrap: wrap; /* Allow wrapping within the group if needed */
+    gap: var(--spacing-lg); /* Increase gap between items */
+    margin-bottom: var(--spacing-md);
+    align-items: center; /* Align items vertically */
+}
+
+/* Remove specific row direction for time-inputs as it's now the default */
+.control-group.time-inputs {
+    /* flex-direction: row; */ /* No longer needed */
+    gap: var(--spacing-lg);
+}
+
+.control-group label {
+    display: flex;
+    align-items: center;
+    font-size: 0.9rem;
+    color: var(--medium-text);
+    cursor: pointer;
+}
+
+.control-group input[type="checkbox"] {
+    margin-right: var(--spacing-sm);
+    accent-color: var(--primary-color);
+}
+
+.control-group input[type="datetime-local"] {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+}
+
+/* Adjustments for log/event display areas */
+.content-section {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-lg);
+}
+
+.events-section,
+.logs-section {
+    flex: 1;
+    min-width: 400px; /* Ensure they don't get too squished */
+    display: flex;
+    flex-direction: column;
+    height: 600px; /* Fixed height for scrollable area */
+    background-color: var(--background-light);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden; /* Hide overflow, scrolling is internal */
+}
+
+.events-section .events-container,
+.logs-section .logs-container {
+    flex-grow: 1;
+    overflow-y: auto; /* Make the content area scrollable */
+    padding: var(--spacing-md);
+}
+
+.search-container {
+    padding: var(--spacing-md);
+    border-bottom: 1px solid var(--border-color);
 }
 
 /* Status colors for condition cards */

@@ -1,18 +1,16 @@
-// ==================== CONSTANTS AND GLOBALS ======================
-const socket = new WebSocket("ws://" + window.location.host + "/ws");
+// ==================== IMPORTS ======================
+import { socket, LOG_BATCH_INTERVAL, EVENT_BATCH_INTERVAL, SEARCH_DEBOUNCE_DELAY, generateSessionId, highlightMatches } from './core.js';
+import { renderClusterTiles } from './dashboard.js';
+
+// ==================== GLOBALS ======================
 let currentLogSessionId = null;
 let currentEventSessionId = null;
-let logFragment = document.createDocumentFragment();
+let logFragment = null;
 let batchTimeoutId = null;
 let eventFragments = {}; // Map to store event fragments by cluster name
 let eventBatchTimeoutId = null;
-const LOG_BATCH_INTERVAL = 500; // For logs
-const EVENT_BATCH_INTERVAL = 10; // Faster interval for events
-const SEARCH_DEBOUNCE_DELAY = 300; // Delay in ms for search debounce
 
 // Search data storage
-let eventsData = [];
-let logsData = [];
 let eventsFuse = null;
 let logsFuse = null;
 
@@ -107,6 +105,7 @@ function initializeSearchFunctionality() {
         // Clear any previous timeout
         if (eventsSearchTimeout) {
             clearTimeout(eventsSearchTimeout);
+            eventsSearchTimeout = null;
         }
         
         if (query) {
@@ -132,6 +131,7 @@ function initializeSearchFunctionality() {
         // Clear any previous timeout
         if (logsSearchTimeout) {
             clearTimeout(logsSearchTimeout);
+            logsSearchTimeout = null;
         }
         
         if (query) {
@@ -186,18 +186,10 @@ function initializeFuse() {
 }
 
 // ==================== EVENT HANDLERS ====================
-function handleLogsClusterSelection() {
-    // If logs are active, resubscribe with the new cluster selection
-    const logsCheckbox = document.getElementById('logsCheckbox');
-    if (logsCheckbox && logsCheckbox.checked) {
-        handleLogsSelection({ target: logsCheckbox });
-    }
-}
+
 
 function handleLogsSelection(event) {
     const logsContainerData = document.getElementById('logsContainerData');
-    logFragment = document.createDocumentFragment();
-    logsContainerData.innerHTML = '';
 
     if (event.target.checked) {
         // Validate inputs
@@ -250,7 +242,13 @@ function handleLogsSelection(event) {
         currentLogSessionId = null;
         // Reset Fuse collection
         if (logsFuse) logsFuse = new Fuse([], logsFuse.options);
+        //clear log timeout
+        if (batchTimeoutId) {
+            clearTimeout(batchTimeoutId);
+            batchTimeoutId = null;
+        }
         logsContainerData.innerHTML = ''; // Clear logs container visually
+        logFragment = null;
         socket.send(JSON.stringify({
             type: "logs",
             sessionId: null
@@ -264,6 +262,8 @@ function handleClusterSelection() {
     // Generate a new session ID if we have selected clusters
     if (selectedClusters.length > 0) {
         currentEventSessionId = generateSessionId();
+        
+
     } else {
         currentEventSessionId = null;
     }
@@ -271,13 +271,26 @@ function handleClusterSelection() {
     // Remove event divs for unselected clusters
     const eventsContainerData = document.getElementById("eventsContainerData");
     const clusterDivs = eventsContainerData.getElementsByClassName('cluster-events');
+
+
+    //clear event timeout 
+    if (eventBatchTimeoutId) {
+        clearTimeout(eventBatchTimeoutId);
+        eventBatchTimeoutId = null;
+    }
+
+    //clear event container and fragments
+    eventsContainerData.innerHTML = '';
+    eventFragments = {};
     
-    Array.from(clusterDivs).forEach(div => {
-        const clusterName = div.id.replace('events-', '');
-        if (!selectedClusters.includes(clusterName)) {
-            div.remove();
-        }
-    });
+    // Array.from(clusterDivs).forEach(div => {
+    //     const clusterName = div.id.replace('events-', '');
+    //     if (!selectedClusters.includes(clusterName)) {
+    //         div.remove();
+    //         // Remove fragment for this cluster
+    //         delete eventFragments[clusterName];
+    //     }
+    // });
 
     socket.send(JSON.stringify({
         type: "clustersevents",
@@ -326,7 +339,7 @@ function searchEvents(query) {
     results.forEach(result => {
         const event = result.item;
         const resultDiv = document.createElement('div');
-        resultDiv.className = 'search-result-item search-result-event';
+        resultDiv.className = 'event-entry';
         
         // Process matches for each field
         let clusterHighlighted = event.clusterName || '';
@@ -354,9 +367,11 @@ function searchEvents(query) {
         
         resultDiv.innerHTML = `
             <div class="search-result-cluster">Cluster: ${clusterHighlighted}</div>
-            <span class="event-property"><strong>Kind:</strong> ${kindHighlighted}</span>
-            <span class="event-property"><strong>Name:</strong> ${nameHighlighted}</span>
-            <span class="event-property"><strong>Message:</strong> ${messageHighlighted}</span>
+            <div class="event-header">
+                <span class="event-kind">${kindHighlighted}</span>
+                <span class="event-object-name">${nameHighlighted}</span>
+            </div>
+            <div class="event-message">${messageHighlighted}</div>
         `;
         
         fragment.appendChild(resultDiv);
@@ -408,10 +423,10 @@ function updateClusters(clusters) {
     updateClusterContainer("clustersContainer", "cluster-checkbox", clusters, handleClusterSelection);
     
     // Update logs page clusters
-    updateClusterContainer("logsClusterContainer", "logs-cluster-checkbox", clusters, handleLogsClusterSelection);
+    updateClusterContainer("logsClusterContainer", "logs-cluster-checkbox", clusters);
 }
 
-// Helper function to update a cluster container
+// Helper function to update a cluster container if there is no change handler do not apply event listener
 function updateClusterContainer(containerId, checkboxClass, clusters, changeHandler) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -435,7 +450,9 @@ function updateClusterContainer(containerId, checkboxClass, clusters, changeHand
             
             // Add event listener to new checkbox
             const checkbox = label.querySelector(`.${checkboxClass}`);
-            checkbox.addEventListener('change', changeHandler);
+            if (changeHandler) {
+                checkbox.addEventListener('change', changeHandler);
+            }
         }
     });
 
@@ -511,24 +528,26 @@ function updateEvents(eventData) {
         clusterTitle.addEventListener('click', function() {
             clusterDiv.classList.toggle('collapsed');
         });
+        
+        // Initialize fragment for this cluster if it doesn't exist
+        if (!eventFragments[eventData.clusterName]) {
+            eventFragments[eventData.clusterName] = document.createDocumentFragment();
+        }
     }
 
-    // Create an event element
-    const eventElement = document.createElement("div");
-    eventElement.className = 'event-item';
-    eventElement.innerHTML = `
-        <span class="event-property"><strong>Kind:</strong> ${eventData.kind}</span>
-        <span class="event-property"><strong>Name:</strong> ${eventData.objectName}</span>
-        <span class="event-property"><strong>Message:</strong> ${eventData.message}</span>
+    // Create the event entry
+    const eventEntry = document.createElement('div');
+    eventEntry.className = 'event-entry';
+    eventEntry.innerHTML = `
+        <div class="event-header">
+            <span class="event-kind">${eventData.kind}</span>
+            <span class="event-object-name">${eventData.objectName}</span>
+        </div>
+        <div class="event-message">${eventData.message}</div>
     `;
     
-    // Initialize fragment for this cluster if it doesn't exist
-    if (!eventFragments[eventData.clusterName]) {
-        eventFragments[eventData.clusterName] = document.createDocumentFragment();
-    }
-    
-    // Add the event to the fragment
-    eventFragments[eventData.clusterName].appendChild(eventElement);
+    // Add to the fragment for this cluster
+    eventFragments[eventData.clusterName].appendChild(eventEntry);
     
     // If we don't have a timer running yet, start one
     if (!eventBatchTimeoutId) {
@@ -537,7 +556,7 @@ function updateEvents(eventData) {
 }
 
 function updateLogs(logData) {
-    // Add the log message directly to Fuse index
+    // Add the log data directly to Fuse index
     if (logsFuse) {
         logsFuse.add(logData.message);
     }
@@ -552,6 +571,9 @@ function updateLogs(logData) {
     const logEntry = document.createElement('div');
     logEntry.className = 'log-entry';
     logEntry.textContent = logData.message;
+    if (!logFragment) {
+        logFragment = document.createDocumentFragment();
+    }
     logFragment.appendChild(logEntry);
     
     // If we don't have a timer running yet, start one
@@ -583,7 +605,7 @@ function flushLogBatch() {
         }
         
         // Create a new empty fragment for the next batch
-        logFragment = document.createDocumentFragment();
+        logFragment = null;
     }
     
     // Clear the timeout
@@ -618,7 +640,7 @@ function flushEventBatches() {
                 }
                 
                 // Create a new empty fragment for the next batch
-                eventFragments[clusterName] = document.createDocumentFragment();
+                eventFragments[clusterName] = null;
             }
         }
     }
@@ -627,211 +649,20 @@ function flushEventBatches() {
     eventBatchTimeoutId = null;
 }
 
-// ==================== UTILITY FUNCTIONS ====================
-function generateSessionId() {
-    return Date.now().toString() + window.crypto.getRandomValues(new Uint32Array(1))[0];
-}
-
-function highlightMatches(text, matches) {
-    if (!matches || !text) return text;
-    
-    // Sort matches by indices from end to beginning
-    const sortedMatches = [...matches].sort((a, b) => b[0] - a[0]);
-    
-    let result = text;
-    
-    // Process each match from end to beginning
-    for (const [start, end] of sortedMatches) {
-        const matchedText = result.substring(start, end + 1);
-        const highlighted = `<span class="match-highlight">${matchedText}</span>`;
-        result = result.substring(0, start) + highlighted + result.substring(end + 1);
-    }
-    
-    return result;
-}
-
-// Function to determine the tile color based on status and type
-function getTileColor(status, type) {
-  // Unknown status takes precedence
-  if (status === 'Unknown') {
-    return 'grey';
-  }
-
-  // Active conditions (status True)
-  if (status === 'True') {
-    switch (type) {
-      // Positive conditions
-      case 'Available':
-      case 'Balanced':
-      case 'AutoscaleReady':
-      case 'Synchronized':
-        return 'green';
-
-      // Active error condition is bad
-      case 'Error':
-        return 'red';
-
-      // Transitional/in-progress conditions
-      case 'Scaling':
-      case 'ScalingUp':
-      case 'ScalingDown':
-      case 'Upgrading':
-      case 'WaitingBetweenMigrations':
-      case 'Migrating':
-      case 'Rebalancing':
-      case 'ExpandingVolume':
-      case 'BucketMigrating':
-        return 'orange';
-
-      // Special cases
-      case 'ManageConfig':
-        return 'blue';
-      case 'Hibernating':
-        return 'purple';
-
-      default:
-        return 'grey';  // fallback for any unexpected type
-    }
-  }
-  
-  // Inactive conditions (status False)
-  if (status === 'False') {
-    switch (type) {
-      // When healthy conditions are false, that's bad
-      case 'Available':
-      case 'Balanced':
-      case 'AutoscaleReady':
-      case 'Synchronized':
-        return 'red';
-
-      // For an inactive error, use grey to indicate neutrality instead of green
-      case 'Error':
-        return 'grey';
-
-      // For other cases, a neutral color can be used
-      default:
-        return 'grey';
-    }
-  }
-}
-
-// Function to determine the overall tile color based on conditions
-function getOverallTileColor(conditions) {
-  if (!conditions || conditions.length === 0) {
-    return 'grey';
-  }
-  
-  // Priority order for overall status
-  const redCondition = conditions.find(c => 
-    getTileColor(c.status, c.type) === 'red');
-  if (redCondition) return 'red';
-  
-  const orangeCondition = conditions.find(c => 
-    getTileColor(c.status, c.type) === 'orange');
-  if (orangeCondition) return 'orange';
-  
-  const purpleCondition = conditions.find(c => 
-    getTileColor(c.status, c.type) === 'purple');
-  if (purpleCondition) return 'purple';
-  
-  const blueCondition = conditions.find(c => 
-    getTileColor(c.status, c.type) === 'blue');
-  if (blueCondition) return 'blue';
-  
-  const greenCondition = conditions.find(c => 
-    getTileColor(c.status, c.type) === 'green');
-  if (greenCondition) return 'green';
-  
-  return 'grey';
-}
-
-// Function to render cluster tiles
-function renderClusterTiles(clusterConditions) {
-  const container = document.getElementById('clusterTilesContainer');
-  if (!container || !clusterConditions) return;
-  
-  container.innerHTML = '';
-  
-  Object.keys(clusterConditions).forEach(clusterName => {
-    const conditions = clusterConditions[clusterName];
-    const overallColor = getOverallTileColor(conditions);
-    
-    const tile = document.createElement('div');
-    tile.className = `cluster-tile tile-${overallColor}`;
-    tile.dataset.clusterName = clusterName;
-    
-    // Add click event to navigate to cluster page
-    tile.addEventListener('click', () => {
-      window.open(`/cluster/${clusterName}`, '_blank');
-    });
-    
-    const titleEl = document.createElement('h3');
-    titleEl.textContent = clusterName;
-    tile.appendChild(titleEl);
-    
-    const conditionsList = document.createElement('ul');
-    conditionsList.className = 'conditions-list';
-    
-    // Sort conditions by priority (error conditions first, then in-progress, then others)
-    const sortedConditions = [...conditions].sort((a, b) => {
-      const colorA = getTileColor(a.status, a.type);
-      const colorB = getTileColor(b.status, b.type);
-      
-      const priority = {
-        'red': 1,
-        'orange': 2,
-        'purple': 3,
-        'blue': 4,
-        'green': 5,
-        'grey': 6
-      };
-      
-      return priority[colorA] - priority[colorB];
-    });
-    
-    // Display up to 5 most important conditions
-    sortedConditions.slice(0, 5).forEach(condition => {
-      const conditionColor = getTileColor(condition.status, condition.type);
-      
-      const conditionItem = document.createElement('li');
-      conditionItem.className = 'condition-item';
-      
-      const conditionType = document.createElement('span');
-      conditionType.className = 'condition-type';
-      conditionType.textContent = condition.type;
-      
-      const conditionStatus = document.createElement('span');
-      conditionStatus.className = `condition-status status-${conditionColor}`;
-      conditionStatus.textContent = condition.status;
-      
-      conditionItem.appendChild(conditionType);
-      conditionItem.appendChild(conditionStatus);
-      conditionsList.appendChild(conditionItem);
-    });
-    
-    tile.appendChild(conditionsList);
-    container.appendChild(tile);
-  });
-}
-
 function initializeEventsPage() {
-    // Add any specific initialization for events here
     const clusterCheckboxes = document.querySelectorAll('.cluster-checkbox');
     clusterCheckboxes.forEach(checkbox => {
         checkbox.addEventListener('change', handleClusterSelection);
+        
+
     });
+    
 }
 
 function initializeLogsPage() {
-    // Initialize logs checkbox
     const logsCheckbox = document.getElementById('logsCheckbox');
     if (logsCheckbox) {
         logsCheckbox.addEventListener('change', handleLogsSelection);
     }
     
-    // Initialize cluster checkboxes for logs
-    const logClusterCheckboxes = document.querySelectorAll('.logs-cluster-checkbox');
-    logClusterCheckboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', handleLogsClusterSelection);
-    });
 }

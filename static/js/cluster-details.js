@@ -1,16 +1,15 @@
+// ==================== IMPORTS ======================
+import { socket, LOG_BATCH_INTERVAL, EVENT_BATCH_INTERVAL, SEARCH_DEBOUNCE_DELAY, generateSessionId, highlightMatches } from './core.js';
+
 // ==================== CONSTANTS AND GLOBALS ======================
-const socket = new WebSocket("ws://" + window.location.host + "/ws");
 let currentLogSessionId = null;
 let currentEventSessionId = null;
-let logFragment = document.createDocumentFragment();
+let logFragment = null;
 let batchTimeoutId = null;
-const LOG_BATCH_INTERVAL = 500;
-const EVENT_BATCH_INTERVAL = 10;
-const SEARCH_DEBOUNCE_DELAY = 300;
+let eventFragment = null;
+let eventBatchTimeoutId = null;
 
-// Search data storage
-let eventsData = [];
-let logsData = [];
+
 let eventsFuse = null;
 let logsFuse = null;
 
@@ -44,10 +43,12 @@ function initializeControls() {
     const logsCheckbox = document.getElementById('logsCheckbox');
     const watchEventsCheckbox = document.getElementById('watchEventsCheckbox');
     const followCheckbox = document.getElementById('followCheckbox');
-    const autoScrollCheckbox = document.getElementById('autoScrollCheckbox');
+    const autoScrollLogsCheckbox = document.getElementById('autoScrollLogsCheckbox');
+    const autoScrollEventsCheckbox = document.getElementById('autoScrollEventsCheckbox');
     const startTimeInput = document.getElementById('startTime');
     const endTimeInput = document.getElementById('endTime');
-    const logsContainerData = document.getElementById('logsContainerData');
+    const logsContainer = document.getElementById('logsContainerData');
+    const eventsContainer = document.querySelector('.events-section .events-content');
     const clusterName = document.getElementById('clusterNameHolder').getAttribute('data-name');
 
     // Initialize time inputs
@@ -56,26 +57,55 @@ function initializeControls() {
     endTimeInput.disabled = followCheckbox.checked;
 
     // Set up event listeners for logs container scrolling
-    logsContainerData.addEventListener('scroll', function() {
-        if (autoScrollCheckbox.checked) {
-            const isScrolledToBottom = logsContainerData.scrollHeight - logsContainerData.clientHeight <= logsContainerData.scrollTop + 50;
+    logsContainer.addEventListener('scroll', function() {
+        if (autoScrollLogsCheckbox.checked) {
+            const isScrolledToBottom = logsContainer.scrollHeight - logsContainer.clientHeight <= logsContainer.scrollTop + 50;
             if (!isScrolledToBottom) {
-                autoScrollCheckbox.checked = false;
+                autoScrollLogsCheckbox.checked = false;
             }
         }
     });
+    
+    // Set up event listeners for events container scrolling
+    if (eventsContainer) {
+        eventsContainer.addEventListener('scroll', function() {
+            if (autoScrollEventsCheckbox.checked) {
+                const isScrolledToBottom = eventsContainer.scrollHeight - eventsContainer.clientHeight <= eventsContainer.scrollTop + 50;
+                if (!isScrolledToBottom) {
+                    autoScrollEventsCheckbox.checked = false;
+                }
+            }
+        });
+    }
 
-    // Auto-scroll checkbox event listener
-    autoScrollCheckbox.addEventListener('change', function() {
+    // Auto-scroll Logs checkbox event listener
+    autoScrollLogsCheckbox.addEventListener('change', function() {
         if (this.checked) {
-            logsContainerData.scrollTop = logsContainerData.scrollHeight;
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+        }
+    });
+
+    // Auto-scroll Events checkbox event listener
+    autoScrollEventsCheckbox.addEventListener('change', function() {
+        if (this.checked && eventsContainer) {
+            eventsContainer.scrollTop = eventsContainer.scrollHeight;
         }
     });
 
     // Watch events checkbox event listener
     watchEventsCheckbox.addEventListener('change', function() {
-        const eventsContainerData = document.getElementById('eventsContainerData');
-        eventsContainerData.querySelector('.events-content').innerHTML = '';
+        const eventsContent = document.querySelector('.events-section .events-content');
+        if (eventsContent) {
+            eventsContent.innerHTML = '';
+        }
+        
+        // Reset event fragment and clear any pending batch
+        eventFragment = null;
+        if (eventBatchTimeoutId) {
+            clearTimeout(eventBatchTimeoutId);
+            eventBatchTimeoutId = null;
+        }
+        
         currentEventSessionId = this.checked ? generateSessionId() : null;
 
         socket.send(JSON.stringify({
@@ -87,9 +117,6 @@ function initializeControls() {
 
     // Logs checkbox event listener
     logsCheckbox.addEventListener('change', function() {
-        const logsContainerData = document.getElementById('logsContainerData');
-        logFragment = document.createDocumentFragment();
-        logsContainerData.innerHTML = '';
 
         if (this.checked) {
             if (!followCheckbox.checked && !startTimeInput.value) {
@@ -125,7 +152,13 @@ function initializeControls() {
         } else {
             currentLogSessionId = null;
             if (logsFuse) logsFuse = new Fuse([], logsFuse.options);
-            logsContainerData.innerHTML = '';
+            //clear log timeout
+            if (batchTimeoutId) {
+                clearTimeout(batchTimeoutId);
+                batchTimeoutId = null;
+            }
+            logsContainer.innerHTML = '';
+            logFragment = null;
             socket.send(JSON.stringify({
                 type: "logs",
                 sessionId: null
@@ -161,6 +194,7 @@ function initializeSearchFunctionality() {
         
         if (eventsSearchTimeout) {
             clearTimeout(eventsSearchTimeout);
+            eventsSearchTimeout = null;
         }
         
         if (query) {
@@ -183,6 +217,7 @@ function initializeSearchFunctionality() {
         
         if (logsSearchTimeout) {
             clearTimeout(logsSearchTimeout);
+            logsSearchTimeout = null;
         }
         
         if (query) {
@@ -264,17 +299,19 @@ function searchEvents(query) {
         return;
     }
     
-    const fragment = document.createDocumentFragment();
+    let fragment = document.createDocumentFragment();
     results.forEach(result => {
         const event = result.item;
         const resultDiv = document.createElement('div');
-        resultDiv.className = 'search-result-item search-result-event';
+        resultDiv.className = 'event-entry';
         
+        // Process matches for each field
         let kindHighlighted = event.kind || '';
         let nameHighlighted = event.objectName || '';
         let messageHighlighted = event.message || '';
         
         if (result.matches && result.matches.length > 0) {
+            // Process each match by field
             result.matches.forEach(match => {
                 if (match.key === 'kind' && match.indices.length > 0) {
                     kindHighlighted = highlightMatches(kindHighlighted, match.indices);
@@ -289,15 +326,18 @@ function searchEvents(query) {
         }
         
         resultDiv.innerHTML = `
-            <span class="event-property"><strong>Kind:</strong> ${kindHighlighted}</span>
-            <span class="event-property"><strong>Name:</strong> ${nameHighlighted}</span>
-            <span class="event-property"><strong>Message:</strong> ${messageHighlighted}</span>
+            <div class="event-header">
+                <span class="event-kind">${kindHighlighted}</span>
+                <span class="event-object-name">${nameHighlighted}</span>
+            </div>
+            <div class="event-message">${messageHighlighted}</div>
         `;
         
         fragment.appendChild(resultDiv);
     });
     
     eventsSearchResults.appendChild(fragment);
+    fragment = null
     eventsSearchResults.scrollTop = 0;
 }
 
@@ -311,7 +351,7 @@ function searchLogs(query) {
         return;
     }
 
-    const fragment = document.createDocumentFragment();
+    let fragment = document.createDocumentFragment();
     results.forEach(result => {
         const logMessage = result.item;
         const resultDiv = document.createElement('div');
@@ -330,6 +370,7 @@ function searchLogs(query) {
     });
     
     logsSearchResults.appendChild(fragment);
+    fragment = null
     logsSearchResults.scrollTop = 0;
 }
 
@@ -345,21 +386,26 @@ function updateEvents(eventData) {
     }
     
     const eventElement = document.createElement("div");
-    eventElement.className = 'event-item';
+    eventElement.className = 'event-entry';
     eventElement.innerHTML = `
-        <span class="event-property"><strong>Kind:</strong> ${eventData.kind}</span>
-        <span class="event-property"><strong>Name:</strong> ${eventData.objectName}</span>
-        <span class="event-property"><strong>Message:</strong> ${eventData.message}</span>
+        <div class="event-header">
+            <span class="event-kind">${eventData.kind}</span>
+            <span class="event-object-name">${eventData.objectName}</span>
+        </div>
+        <div class="event-message">${eventData.message}</div>
     `;
     
-    const eventsContent = document.querySelector('.events-content');
-    if (eventsContent) {
-        eventsContent.appendChild(eventElement);
-        
-        const autoScrollCheckbox = document.getElementById('autoScrollCheckbox');
-        if (autoScrollCheckbox && autoScrollCheckbox.checked) {
-            eventsContent.scrollTop = eventsContent.scrollHeight;
-        }
+    // Initialize fragment if it doesn't exist
+    if (!eventFragment) {
+        eventFragment = document.createDocumentFragment();
+    }
+    
+    // Add to event fragment for batching
+    eventFragment.appendChild(eventElement);
+    
+    // If we don't have a timer running yet, start one
+    if (!eventBatchTimeoutId) {
+        eventBatchTimeoutId = setTimeout(flushEventBatch, EVENT_BATCH_INTERVAL);
     }
 }
 
@@ -376,6 +422,12 @@ function updateLogs(logData) {
     const logEntry = document.createElement('div');
     logEntry.className = 'log-entry';
     logEntry.textContent = logData.message;
+    
+    // Initialize fragment if it doesn't exist
+    if (!logFragment) {
+        logFragment = document.createDocumentFragment();
+    }
+    
     logFragment.appendChild(logEntry);
     
     if (!batchTimeoutId) {
@@ -385,117 +437,130 @@ function updateLogs(logData) {
 
 function flushLogBatch() {
     if (logFragment.children.length > 0) {
-        const logsContainerData = document.getElementById('logsContainerData');
-        const autoScrollCheckbox = document.getElementById('autoScrollCheckbox');
+        const logsContainer = document.getElementById('logsContainerData');
+        const autoScrollLogsCheckbox = document.getElementById('autoScrollLogsCheckbox');
         
-        const shouldScrollToBottom = autoScrollCheckbox.checked;
-        const scrollTop = logsContainerData.scrollTop;
+        const shouldScrollToBottom = autoScrollLogsCheckbox.checked;
+        const scrollTop = logsContainer.scrollTop;
         
-        logsContainerData.appendChild(logFragment);
+        logsContainer.appendChild(logFragment);
         
         if (shouldScrollToBottom) {
-            logsContainerData.scrollTop = logsContainerData.scrollHeight;
+            logsContainer.scrollTop = logsContainer.scrollHeight;
         } else {
-            logsContainerData.scrollTop = scrollTop;
+            logsContainer.scrollTop = scrollTop;
         }
         
-        logFragment = document.createDocumentFragment();
+        logFragment = null;
     }
     
     batchTimeoutId = null;
 }
 
-// ==================== UTILITY FUNCTIONS ====================
-function generateSessionId() {
-    return Date.now().toString() + window.crypto.getRandomValues(new Uint32Array(1))[0];
-}
-
-function highlightMatches(text, matches) {
-    if (!matches || !text) return text;
-    
-    // Sort matches by indices from end to beginning to avoid offset issues
-    const sortedMatches = [...matches].sort((a, b) => b[0] - a[0]);
-    let result = text;
-    
-    // Process each match from end to beginning
-    for (const [start, end] of sortedMatches) {
-        const matchedText = result.substring(start, end + 1);
-        const highlighted = `<span class="match-highlight">${matchedText}</span>`;
-        result = result.substring(0, start) + highlighted + result.substring(end + 1);
+function flushEventBatch() {
+    if (eventFragment.children.length > 0) {
+        const eventsContent = document.querySelector('.events-section .events-content');
+        if (eventsContent) {
+            const autoScrollEventsCheckbox = document.getElementById('autoScrollEventsCheckbox');
+            
+            // If auto-scroll is checked, we'll always scroll to bottom after adding events
+            const shouldScrollToBottom = autoScrollEventsCheckbox && autoScrollEventsCheckbox.checked;
+            
+            // If auto-scroll is not checked, remember current scroll position to maintain it
+            const scrollTop = eventsContent.scrollTop;
+            
+            // Append all entries at once
+            eventsContent.appendChild(eventFragment);
+            
+            if (shouldScrollToBottom) {
+                // Scroll to bottom if auto-scroll is enabled
+                eventsContent.scrollTop = eventsContent.scrollHeight;
+            } else {
+                // Maintain scroll position if auto-scroll is disabled
+                eventsContent.scrollTop = scrollTop;
+            }
+            
+            // Create a new empty fragment for the next batch
+            eventFragment = null;
+        }
     }
     
-    return result;
+    // Clear the timeout
+    eventBatchTimeoutId = null;
 }
+
+// ==================== UTILITY FUNCTIONS ====================
+// Functions moved to core.js - removed from this file
 
 // ==================== RENDERING FUNCTIONS ====================
-    function renderConditions(allConditions) {
+function renderConditions(allConditions) {
     const clusterName = document.getElementById('clusterNameHolder').getAttribute('data-name');
-        const conditions = allConditions[clusterName] || [];
-        const conditionsContainer = document.getElementById('conditionsContainer');
-        
-        if (!conditionsContainer) return;
-        
+    const conditions = allConditions[clusterName] || [];
+    const conditionsContainer = document.getElementById('conditionsContainer');
+    
+    if (!conditionsContainer) return;
+    
     // Sort conditions by priority
-        const sortedConditions = [...conditions].sort((a, b) => {
-            const colorA = getConditionColor(a.status, a.type);
-            const colorB = getConditionColor(b.status, b.type);
-            
-            const priority = {
-                'red': 1,
-                'orange': 2,
-                'purple': 3,
-                'blue': 4,
-                'green': 5,
-                'grey': 6
-            };
-            
-            return priority[colorA] - priority[colorB];
-        });
+    const sortedConditions = [...conditions].sort((a, b) => {
+        const colorA = getConditionColor(a.status, a.type);
+        const colorB = getConditionColor(b.status, b.type);
         
-        conditionsContainer.innerHTML = '';
+        const priority = {
+            'red': 1,
+            'orange': 2,
+            'purple': 3,
+            'blue': 4,
+            'green': 5,
+            'grey': 6
+        };
         
-        if (sortedConditions.length === 0) {
-            conditionsContainer.innerHTML = '<div class="no-conditions">No conditions found for this cluster</div>';
-            return;
-        }
-        
-        sortedConditions.forEach(condition => {
-            const card = document.createElement('div');
-            card.className = `condition-card status-${getConditionColor(condition.status, condition.type)}`;
-            
-            const transitionTime = condition.lastTransitionTime ? new Date(condition.lastTransitionTime).toLocaleString() : 'Unknown';
-            const updateTime = condition.lastUpdateTime ? new Date(condition.lastUpdateTime).toLocaleString() : 'Unknown';
-            
-            card.innerHTML = `
-                <div class="condition-header">
-                    <h3>${condition.type}</h3>
-                    <span class="condition-status">${condition.status}</span>
-                </div>
-                <div class="condition-details">
-                    <div class="condition-field">
-                        <span class="field-label">Reason:</span>
-                        <span class="field-value">${condition.reason || 'None'}</span>
-                    </div>
-                    <div class="condition-field">
-                        <span class="field-label">Message:</span>
-                        <span class="field-value">${condition.message || 'No message'}</span>
-                    </div>
-                    <div class="condition-timestamps">
-                        <div class="condition-field">
-                            <span class="field-label">Last Transition:</span>
-                            <span class="field-value">${transitionTime}</span>
-                        </div>
-                        <div class="condition-field">
-                            <span class="field-label">Last Update:</span>
-                            <span class="field-value">${updateTime}</span>
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            conditionsContainer.appendChild(card);
-        });
+        return priority[colorA] - priority[colorB];
+    });
+    
+    conditionsContainer.innerHTML = '';
+    
+    if (sortedConditions.length === 0) {
+        conditionsContainer.innerHTML = '<div class="no-conditions">No conditions found for this cluster</div>';
+        return;
     }
+    
+    sortedConditions.forEach(condition => {
+        const card = document.createElement('div');
+        card.className = `condition-card status-${getConditionColor(condition.status, condition.type)}`;
+        
+        const transitionTime = condition.lastTransitionTime ? new Date(condition.lastTransitionTime).toLocaleString() : 'Unknown';
+        const updateTime = condition.lastUpdateTime ? new Date(condition.lastUpdateTime).toLocaleString() : 'Unknown';
+        
+        card.innerHTML = `
+            <div class="condition-header">
+                <h3>${condition.type}</h3>
+                <span class="condition-status">${condition.status}</span>
+            </div>
+            <div class="condition-details">
+                <div class="condition-field">
+                    <span class="field-label">Reason:</span>
+                    <span class="field-value">${condition.reason || 'None'}</span>
+                </div>
+                <div class="condition-field">
+                    <span class="field-label">Message:</span>
+                    <span class="field-value">${condition.message || 'No message'}</span>
+                </div>
+                <div class="condition-timestamps">
+                    <div class="condition-field">
+                        <span class="field-label">Last Transition:</span>
+                        <span class="field-value">${transitionTime}</span>
+                    </div>
+                    <div class="condition-field">
+                        <span class="field-label">Last Update:</span>
+                        <span class="field-value">${updateTime}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        conditionsContainer.appendChild(card);
+    });
+}
 
 function getConditionColor(status, type) {
     if (status === 'Unknown') {

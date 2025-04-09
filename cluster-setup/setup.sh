@@ -33,8 +33,8 @@ EOF
     docker pull couchbase/server:7.6.0 || true
     k3d image import couchbase/server:7.6.0 -c $name
 
-    docker pull couchbase/operator:2.7.0 || true
-    k3d image import couchbase/operator:2.7.0 -c $name
+    docker pull couchbase/operator:2.8.0 || true
+    k3d image import couchbase/operator:2.8.0 -c $name
 
     docker pull ubuntu || true
     k3d image import ubuntu -c $name
