@@ -18,27 +18,35 @@ import (
 )
 
 type Client struct {
-	conn            *websocket.Conn
-	watchEventslist map[string]bool
-	logWatcher      context.CancelFunc
-	logSessionId    string
-	eventSessionId  string
+	conn                 *websocket.Conn
+	watchEventslist      map[string]bool
+	watchEventslistMutex sync.RWMutex // Mutex for watchEventslist
+	logWatcher           context.CancelFunc
+	logSessionId         string
+	eventSessionId       string
+	sendingCached        bool
+	eventQueue           []utils.Message
+	stateMutex           sync.RWMutex // Mutex for client-specific state (sendingCached, eventQueue, session IDs, logWatcher)
 }
 
 type Server struct {
-	clusters           []string
-	clusterConditions  map[string][]map[string]interface{}
-	upgrader           websocket.Upgrader
-	clients            map[*Client]bool
-	eventWatchers      map[string]context.CancelFunc
-	broadcast          chan utils.Message
-	clientsMutex       sync.RWMutex
-	eventWatchersMutex sync.Mutex
-	eventCache         map[string][]utils.Message // Map of clusterName to cached events
-	eventCacheMutex    sync.RWMutex
-	clientset          *kubernetes.Clientset
-	dynamicClient      dynamic.Interface
-	allowedMetrics     map[string]bool
+	clusters               []string
+	clustersMutex          sync.RWMutex // Mutex for protecting clusters slice
+	clusterConditions      map[string][]map[string]interface{}
+	clusterConditionsMutex sync.RWMutex // Mutex for protecting clusterConditions map
+	upgrader               websocket.Upgrader
+	clients                map[*Client]bool
+	clientsMapMutex        sync.RWMutex // Mutex for clients map
+	eventWatchers          map[string]context.CancelFunc
+	broadcast              chan utils.Message
+	eventWatchersMutex     sync.Mutex
+	eventCache             map[string][]utils.Message // Map of clusterName to cached events
+	eventCacheMutex        sync.RWMutex
+	clientset              *kubernetes.Clientset
+	dynamicClient          dynamic.Interface
+	allowedMetrics         map[string]bool
+	clientQueue            map[*Client]bool // Map of clients with pending events
+	clientQueueMutex       sync.Mutex       // Mutex for clientQueue map
 }
 
 func NewServer() *Server {
@@ -49,6 +57,8 @@ func NewServer() *Server {
 		broadcast:         make(chan utils.Message),
 		clusterConditions: make(map[string][]map[string]interface{}),
 		eventCache:        make(map[string][]utils.Message),
+		clientQueue:       make(map[*Client]bool),
+		clusters:          make([]string, 0), // Initialize clusters slice
 		allowedMetrics: map[string]bool{
 			"couchbase_operator_cpu_under_management":               true,
 			"couchbase_operator_in_place_upgrade_failures":          true,
@@ -109,6 +119,7 @@ func (s *Server) Start() {
 	fs := http.FileServer(http.Dir("static"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
+	//go routines will be called when a request is made to these endpoints
 	http.HandleFunc("/", s.handleRootRoute)
 	http.HandleFunc("/cluster/", s.handleClusterRoute)
 	http.HandleFunc("/ws", s.handleConnections)

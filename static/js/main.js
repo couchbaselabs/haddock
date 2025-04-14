@@ -307,7 +307,7 @@ function handleWebSocketMessage(event) {
         return;
     }
     
-    if (data.type === "event" && data.sessionId === currentEventSessionId) {
+    if ((data.type === "event" || data.type === "cachedevent") && data.sessionId === currentEventSessionId) {
         updateEvents(data);
         return;
     }

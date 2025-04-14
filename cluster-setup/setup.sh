@@ -2,11 +2,11 @@
 
 set -e
 
-CONFIG_FILE="/Users/aayush.senapati/development/ymls/k3.yaml"
-CRD_FILE="/Users/aayush.senapati/development/ymls/crd.yaml"
-ADMISSION_FILE="/Users/aayush.senapati/development/ymls/admission.yaml"
-OPERATOR_FILE="/Users/aayush.senapati/development/ymls/operator.yaml"
-CLUSTER_FILE="/Users/aayush.senapati/development/ymls/couchbase-cluster.yaml"
+CONFIG_FILE="/Users/aayush.senapati/development/cod/cluster-setup/ymls/k3.yaml"
+CRD_FILE="/Users/aayush.senapati/development/cod/cluster-setup/ymls/crd.yaml"
+ADMISSION_FILE="/Users/aayush.senapati/development/cod/cluster-setup/ymls/admission.yaml"
+OPERATOR_FILE="/Users/aayush.senapati/development/cod/cluster-setup/ymls/operator.yaml"
+CLUSTER_FILE="/Users/aayush.senapati/development/cod/cluster-setup/ymls/couchbase-cluster.yaml"
 
 create_cluster() {
   local name=$1
@@ -28,7 +28,7 @@ volumes:
       - server:*
 EOF
 
-    k3d cluster create --config $CONFIG_FILE
+    k3d cluster create -i rancher/k3s:latest --config $CONFIG_FILE
 
     docker pull couchbase/server:7.6.0 || true
     k3d image import couchbase/server:7.6.0 -c $name

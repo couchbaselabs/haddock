@@ -113,7 +113,7 @@ func GetInitialEvents(clientset *kubernetes.Clientset, dynamicClient dynamic.Int
 	for _, event := range eventList.Items {
 		if isRelevantEvent(&event, clientset, dynamicClient, clusterName) {
 			msg := utils.Message{
-				Type:        "event",
+				Type:        "cachedevent",
 				ClusterName: clusterName,
 				Name:        event.Name,
 				Message:     event.Message,
