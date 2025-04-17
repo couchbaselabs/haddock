@@ -41,7 +41,8 @@ bin/cao generate admission > admission.yaml
 
 ### 3. Modify the Operator YAML
 
-Modify the `operator.yaml` file to include the COD sidecar. Use the provided operator.yaml as a reference. 
+Modify the `operator.yaml` file to include the COD sidecar. Use the provided operator.yaml as a reference.
+See the operator.yaml file in the example folder of this repository for additional guidance on the modifications.
 
 The key modifications include:
 

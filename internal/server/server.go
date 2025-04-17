@@ -30,23 +30,24 @@ type Client struct {
 }
 
 type Server struct {
-	clusters               []string
-	clustersMutex          sync.RWMutex // Mutex for protecting clusters slice
-	clusterConditions      map[string][]map[string]interface{}
-	clusterConditionsMutex sync.RWMutex // Mutex for protecting clusterConditions map
+	clusters               map[string]struct{}                 // Set of active cluster names
+	clustersMutex          sync.RWMutex                        // Mutex for protecting clusters map
+	clusterConditions      map[string][]map[string]interface{} // Cache of K8s conditions per cluster
+	clusterConditionsMutex sync.RWMutex                        // Mutex for protecting clusterConditions map
 	upgrader               websocket.Upgrader
-	clients                map[*Client]bool
-	clientsMapMutex        sync.RWMutex // Mutex for clients map
-	eventWatchers          map[string]context.CancelFunc
-	broadcast              chan utils.Message
-	eventWatchersMutex     sync.Mutex
-	eventCache             map[string][]utils.Message // Map of clusterName to cached events
-	eventCacheMutex        sync.RWMutex
+	clients                map[*Client]bool              // Set of currently connected clients
+	clientsMapMutex        sync.RWMutex                  // Mutex for clients map
+	eventWatchers          map[string]context.CancelFunc // Map of cluster name to its event watcher cancel func
+	broadcast              chan utils.Message            // Channel for distributing messages (events, logs, cluster updates)
+	eventWatchersMutex     sync.Mutex                    // Mutex for eventWatchers map
+	eventCache             map[string][]utils.Message    // Cache of recent K8s events per cluster
+	eventCacheMutex        sync.RWMutex                  // Mutex for eventCache map
 	clientset              *kubernetes.Clientset
 	dynamicClient          dynamic.Interface
-	allowedMetrics         map[string]bool
-	clientQueue            map[*Client]bool // Map of clients with pending events
-	clientQueueMutex       sync.Mutex       // Mutex for clientQueue map
+	allowedMetrics         map[string]bool  // Set of Prometheus metrics allowed to be proxied
+	pendingClients         map[*Client]bool // Set of clients with queued events waiting to be sent
+	pendingClientsMutex    sync.Mutex       // Mutex for pendingClients map
+	namespace              string           // K8s namespace to watch for resources
 }
 
 func NewServer() *Server {
@@ -57,8 +58,8 @@ func NewServer() *Server {
 		broadcast:         make(chan utils.Message),
 		clusterConditions: make(map[string][]map[string]interface{}),
 		eventCache:        make(map[string][]utils.Message),
-		clientQueue:       make(map[*Client]bool),
-		clusters:          make([]string, 0), // Initialize clusters slice
+		pendingClients:    make(map[*Client]bool),
+		clusters:          make(map[string]struct{}),
 		allowedMetrics: map[string]bool{
 			"couchbase_operator_cpu_under_management":               true,
 			"couchbase_operator_in_place_upgrade_failures":          true,
@@ -84,8 +85,10 @@ func (s *Server) Start() {
 		return
 	}
 
+	s.namespace = namespace // Store the namespace in the server struct
+
 	logger.Log.Info("Starting server",
-		zap.String("namespace", namespace),
+		zap.String("namespace", s.namespace),
 		zap.String("port", ":3000"))
 
 	// Set up Kubernetes clients
@@ -110,7 +113,7 @@ func (s *Server) Start() {
 		return
 	}
 
-	// Start the cluster watcher
+	// Start the cluster watcher in the background
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go cluster.StartClusterWatcher(ctx, s.dynamicClient, s.addCluster, s.deleteCluster, s.updateConditions)
@@ -119,20 +122,20 @@ func (s *Server) Start() {
 	fs := http.FileServer(http.Dir("static"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
-	//go routines will be called when a request is made to these endpoints
+	// Handle websocket connections and API/UI proxying
 	http.HandleFunc("/", s.handleRootRoute)
 	http.HandleFunc("/cluster/", s.handleClusterRoute)
 	http.HandleFunc("/ws", s.handleConnections)
 	http.HandleFunc("/cui/", s.handleCouchbaseUIProxy)
 	http.HandleFunc("/metrics", s.handleMetricsEndpoint)
 
-	// Start message handler
+	// Start the central message distribution goroutine
 	go s.handleMessages()
 
 	// Start HTTP server
 	logger.Log.Info("Server listening",
 		zap.String("port", ":3000"),
-		zap.String("namespace", namespace))
+		zap.String("namespace", s.namespace))
 
 	if err := http.ListenAndServe(":3000", nil); err != nil {
 		logger.Log.Fatal("Server failed",
