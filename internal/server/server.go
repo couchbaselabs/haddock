@@ -2,10 +2,8 @@ package server
 
 import (
 	"context"
-	"html/template"
 	"net/http"
 	"os"
-	"strings"
 	"sync"
 
 	"cod/internal/cluster"
@@ -20,28 +18,36 @@ import (
 )
 
 type Client struct {
-	conn            *websocket.Conn
-	watchEventslist map[string]bool
-	watchLogs       bool
-	logSessionId    string
-	eventSessionId  string
+	conn                 *websocket.Conn
+	watchEventslist      map[string]bool
+	watchEventslistMutex sync.RWMutex // Mutex for watchEventslist
+	logWatcher           context.CancelFunc
+	logSessionId         string
+	eventSessionId       string
+	sendingCached        bool
+	eventQueue           []utils.Message
+	stateMutex           sync.RWMutex // Mutex for client-specific state (sendingCached, eventQueue, session IDs, logWatcher)
 }
 
 type Server struct {
-	clusters           []string
-	clusterConditions  map[string][]map[string]interface{}
-	upgrader           websocket.Upgrader
-	clients            map[*Client]bool
-	eventWatchers      map[string]context.CancelFunc
-	logWatcher         context.CancelFunc
-	broadcast          chan utils.Message
-	clientsMutex       sync.Mutex
-	logMutex           sync.Mutex
-	eventWatchersMutex sync.Mutex
-	eventCache         map[string][]utils.Message // Map of clusterName to cached events
-	eventCacheMutex    sync.RWMutex
-	clientset          *kubernetes.Clientset
-	dynamicClient      dynamic.Interface
+	clusters               map[string]struct{}                 // Set of active cluster names
+	clustersMutex          sync.RWMutex                        // Mutex for protecting clusters map
+	clusterConditions      map[string][]map[string]interface{} // Cache of K8s conditions per cluster
+	clusterConditionsMutex sync.RWMutex                        // Mutex for protecting clusterConditions map
+	upgrader               websocket.Upgrader
+	clients                map[*Client]bool              // Set of currently connected clients
+	clientsMapMutex        sync.RWMutex                  // Mutex for clients map
+	eventWatchers          map[string]context.CancelFunc // Map of cluster name to its event watcher cancel func
+	broadcast              chan utils.Message            // Channel for distributing messages (events, logs, cluster updates)
+	eventWatchersMutex     sync.Mutex                    // Mutex for eventWatchers map
+	eventCache             map[string][]utils.Message    // Cache of recent K8s events per cluster
+	eventCacheMutex        sync.RWMutex                  // Mutex for eventCache map
+	clientset              *kubernetes.Clientset
+	dynamicClient          dynamic.Interface
+	allowedMetrics         map[string]bool  // Set of Prometheus metrics allowed to be proxied
+	pendingClients         map[*Client]bool // Set of clients with queued events waiting to be sent
+	pendingClientsMutex    sync.Mutex       // Mutex for pendingClients map
+	namespace              string           // K8s namespace to watch for resources
 }
 
 func NewServer() *Server {
@@ -52,106 +58,88 @@ func NewServer() *Server {
 		broadcast:         make(chan utils.Message),
 		clusterConditions: make(map[string][]map[string]interface{}),
 		eventCache:        make(map[string][]utils.Message),
+		pendingClients:    make(map[*Client]bool),
+		clusters:          make(map[string]struct{}),
+		allowedMetrics: map[string]bool{
+			"couchbase_operator_cpu_under_management":               true,
+			"couchbase_operator_in_place_upgrade_failures":          true,
+			"couchbase_operator_memory_under_management_bytes":      true,
+			"couchbase_operator_reconcile_failures":                 true,
+			"couchbase_operator_pod_replacements_failed":            true,
+			"couchbase_operator_pod_recovery_failures_total":        true,
+			"couchbase_operator_pod_recoveries_total":               true,
+			"couchbase_operator_swap_rebalance_failures":            true,
+			"couchbase_operator_swap_rebalances_total":              true,
+			"couchbase_operator_volume_size_under_management_bytes": true,
+			"couchbase_operator_pod_replacements_total":             true,
+			"couchbase_operator_in_place_upgrades_total":            true,
+		},
 	}
 }
 
 func (s *Server) Start() {
-	var err error
+	// Get the namespace from environment variable - critical for operation
+	namespace := os.Getenv("WATCH_NAMESPACE")
+	if namespace == "" {
+		logger.Log.Fatal("Cannot start server - WATCH_NAMESPACE environment variable not set")
+		return
+	}
+
+	s.namespace = namespace // Store the namespace in the server struct
+
+	logger.Log.Info("Starting server",
+		zap.String("namespace", s.namespace),
+		zap.String("port", ":3000"))
+
+	// Set up Kubernetes clients
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		logger.Log.Fatal("Failed to get in-cluster config", zap.Error(err))
+		logger.Log.Fatal("Cannot initialize Kubernetes client - failed to get in-cluster config",
+			zap.Error(err))
+		return
 	}
 
 	s.clientset, err = kubernetes.NewForConfig(config)
 	if err != nil {
-		logger.Log.Fatal("Failed to create Kubernetes client", zap.Error(err))
+		logger.Log.Fatal("Cannot initialize Kubernetes client",
+			zap.Error(err))
+		return
 	}
 
 	s.dynamicClient, err = dynamic.NewForConfig(config)
 	if err != nil {
-		logger.Log.Fatal("Failed to create dynamic client", zap.Error(err))
+		logger.Log.Fatal("Cannot initialize Kubernetes dynamic client",
+			zap.Error(err))
+		return
 	}
 
-	namespace := os.Getenv("WATCH_NAMESPACE")
-	if namespace == "" {
-		logger.Log.Fatal("WATCH_NAMESPACE environment variable not set")
-	}
-
+	// Start the cluster watcher in the background
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	// Start the cluster watcher with separate add and delete functions
 	go cluster.StartClusterWatcher(ctx, s.dynamicClient, s.addCluster, s.deleteCluster, s.updateConditions)
 
+	// Set up HTTP handlers
 	fs := http.FileServer(http.Dir("static"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// First check if this is an API request
-		if s.isAPIRequest(r) {
-			s.handleCouchbaseAPIProxy(w, r)
-			return
-		}
-
-		// Otherwise serve the dashboard
-		tmpl, _ := template.ParseFiles("templates/index.html")
-		tmpl.Execute(w, s.clusters)
-	})
-
-	// Add a handler for cluster-specific pages
-	http.HandleFunc("/cluster/", func(w http.ResponseWriter, r *http.Request) {
-		// Extract the cluster name from the URL path
-		pathParts := strings.Split(r.URL.Path, "/")
-		if len(pathParts) < 3 {
-			http.NotFound(w, r)
-			return
-		}
-
-		clusterName := pathParts[2]
-
-		// Check if the cluster exists in our tracked clusters list
-		clusterExists := false
-		for _, name := range s.clusters {
-			if name == clusterName {
-				clusterExists = true
-				break
-			}
-		}
-
-		if !clusterExists {
-			http.NotFound(w, r)
-			return
-		}
-
-		// Render the cluster template with the cluster name
-		tmpl, err := template.ParseFiles("templates/cluster.html")
-		if err != nil {
-			logger.Log.Error("Error parsing cluster template", zap.Error(err))
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-
-		data := struct {
-			Name string
-		}{
-			Name: clusterName,
-		}
-
-		if err := tmpl.Execute(w, data); err != nil {
-			logger.Log.Error("Error executing cluster template", zap.Error(err))
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-	})
-
+	// Handle websocket connections and API/UI proxying
+	http.HandleFunc("/", s.handleRootRoute)
+	http.HandleFunc("/cluster/", s.handleClusterRoute)
 	http.HandleFunc("/ws", s.handleConnections)
-
-	// Add a handler for the Couchbase UI proxy - maintain trailing slash to ensure path consistency
 	http.HandleFunc("/cui/", s.handleCouchbaseUIProxy)
+	http.HandleFunc("/metrics", s.handleMetricsEndpoint)
 
+	// Start the central message distribution goroutine
 	go s.handleMessages()
 
-	logger.Log.Info("Server started on :3000")
+	// Start HTTP server
+	logger.Log.Info("Server listening",
+		zap.String("port", ":3000"),
+		zap.String("namespace", s.namespace))
+
 	if err := http.ListenAndServe(":3000", nil); err != nil {
-		logger.Log.Fatal("Server failed", zap.Error(err))
+		logger.Log.Fatal("Server failed",
+			zap.Error(err),
+			zap.String("port", ":3000"))
 	}
 }

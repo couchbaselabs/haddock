@@ -4,3 +4,5 @@ devbox.lock
 dashboard
 cluster-setup/ymls/
 .DS_Store
+metrics.txt
+cluster_resource.txt

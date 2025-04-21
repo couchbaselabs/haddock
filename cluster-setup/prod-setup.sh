@@ -5,7 +5,7 @@ set -e
 CONFIG_FILE="/Users/aayush.senapati/development/cod/cluster-setup/ymls/k3.yaml"
 CRD_FILE="/Users/aayush.senapati/development/cod/cluster-setup/ymls/crd.yaml"
 ADMISSION_FILE="/Users/aayush.senapati/development/cod/cluster-setup/ymls/admission.yaml"
-OPERATOR_FILE="/Users/aayush.senapati/development/cod/cluster-setup/ymls/operator_dev.yaml"
+OPERATOR_FILE="/Users/aayush.senapati/development/cod/cluster-setup/ymls/operator.yaml"
 CLUSTER_FILE="/Users/aayush.senapati/development/cod/cluster-setup/ymls/couchbase-cluster.yaml"
 
 create_cluster() {
@@ -37,8 +37,13 @@ EOF
     docker pull couchbase/operator:2.8.0 || true
     k3d image import couchbase/operator:2.8.0 -c $name
 
-    docker pull ubuntu || true
-    k3d image import ubuntu -c $name
+    # Check if cod:latest image exists locally
+    if ! docker image inspect cod:latest &> /dev/null; then
+        echo "Error: Docker image 'cod:latest' not found locally."
+        echo "Please build the image using the provided Dockerfile before running this script."
+        exit 1
+    fi
+    k3d image import cod:test -c $name
 
     echo "Setting kubectl context to $k3d_context..."
     kubectl config use-context "$k3d_context"

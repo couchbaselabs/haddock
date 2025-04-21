@@ -4,9 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cluster: {{.Name}}</title>
-    <link rel="stylesheet" href="/static/css/styles.css">
+    <!-- Replace single CSS file with modular CSS files -->
+    <link rel="stylesheet" href="/static/css/common.css">
+    <link rel="stylesheet" href="/static/css/couchbaseui.css">
+    <link rel="stylesheet" href="/static/css/events.css">
+    <link rel="stylesheet" href="/static/css/logs.css">
+    <link rel="stylesheet" href="/static/css/status.css">
     <!-- External JavaScript file reference -->
-    <script src="/static/js/cluster-details.js" defer></script>
+    <script src="/static/js/fuse.js"></script>
+    <script type="module" src="/static/js/cluster-details.js"></script>
 </head>
 <body>
     <!-- Hidden element to store cluster name for JavaScript -->
@@ -17,7 +23,6 @@
             <h1>Cluster: {{.Name}}</h1>
             <div class="header-actions">
                 <button id="openCouchbaseUI" class="primary-button">Open Couchbase UI</button>
-                <a href="/" class="back-link">← Back to Dashboard</a>
             </div>
         </header>
         
@@ -25,6 +30,79 @@
             <h2>Cluster Conditions</h2>
             <div id="conditionsContainer" class="conditions-container">
                 <div class="loading-spinner">Loading conditions...</div>
+            </div>
+        </div>
+
+        <div class="monitoring-section">
+            <div class="monitoring-controls">
+                
+                <!-- Event Options Container -->
+                <div class="control-panel event-options">
+                    <h3>Event Options</h3>
+                    <div class="control-group">
+                        <label>
+                            <input type="checkbox" id="watchEventsCheckbox">
+                            Watch Events
+                        </label>
+                    </div>
+                    <div class="control-group">
+                        <label>
+                            <input type="checkbox" id="autoScrollEventsCheckbox" checked>
+                            Auto-scroll Events
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Log Options Container -->
+                <div class="control-panel log-options">
+                    <h3>Log Options</h3>
+                    <div class="control-group">
+                        <label>
+                            <input type="checkbox" id="logsCheckbox">
+                            Watch Logs
+                        </label>
+                        <label>
+                            <input type="checkbox" id="followCheckbox" checked>
+                            Follow Logs
+                        </label>
+                    </div>
+                    <div class="control-group time-inputs">
+                        <label>Start Time:
+                            <input type="datetime-local" id="startTime">
+                        </label>
+                        <label>End Time:
+                            <input type="datetime-local" id="endTime">
+                        </label>
+                    </div>
+                     <div class="control-group">
+                        <label>
+                            <input type="checkbox" id="autoScrollLogsCheckbox" checked>
+                            Auto-scroll Logs
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="content-section">
+                <div class="events-section">
+                    <div class="search-container">
+                        <input type="text" id="eventsSearch" placeholder="Search events...">
+                        <button id="clearEventsSearch">Clear</button>
+                    </div>
+                    <div id="eventsContainerData" class="events-container">
+                        <div class="events-content"></div>
+                    </div>
+                    <div id="eventsSearchResults" class="search-results"></div>
+                </div>
+
+                <div class="logs-section">
+                    <div class="search-container">
+                        <input type="text" id="logsSearch" placeholder="Search logs...">
+                        <button id="clearLogsSearch">Clear</button>
+                    </div>
+                    <div id="logsContainerData" class="logs-container"></div>
+                    <div id="logsSearchResults" class="search-results"></div>
+                </div>
             </div>
         </div>
     </div>
