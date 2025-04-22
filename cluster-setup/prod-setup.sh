@@ -43,7 +43,7 @@ EOF
         echo "Please build the image using the provided Dockerfile before running this script."
         exit 1
     fi
-    k3d image import cod:test -c $name
+    k3d image import cod:latest -c $name
 
     echo "Setting kubectl context to $k3d_context..."
     kubectl config use-context "$k3d_context"
