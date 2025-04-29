@@ -219,7 +219,7 @@ spec:
         - name: additional-prometheus-labels
         - name: separate-cluster-name-and-namespace
           value: "true"
-        image: ghcr.io/cb-vanilla/operator:2.9.0-155
+        image: ghcr.io/cb-vanilla/operator:2.9.0-156
         imagePullPolicy: IfNotPresent
         name: couchbase-operator
         ports:
