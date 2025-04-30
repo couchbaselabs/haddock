@@ -7,7 +7,7 @@ This repository contains a dashboard application for monitoring and managing Cou
 To compile the dashboard binary, run the following command in the root of the project:
 
 ```bash
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags debug -a -installsuffix cgo -o dashboard cmd/cod/main.go
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -tags debug -a -installsuffix cgo -o dashboard cmd/cod/main.go
 ```
 
 ## Building the Docker Image
