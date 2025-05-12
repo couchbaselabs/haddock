@@ -58,10 +58,10 @@ func (s *Server) handleCouchbaseAPIProxy(w http.ResponseWriter, r *http.Request)
 
 	// Namespace is checked in server.Start()
 
-	// Create the service name (e.g., mycluster-ui)
-	svcName := clusterName + "-ui"
+	// Use the cluster name directly as the service name instead of appending "-ui"
+	svcName := clusterName
 
-	// Construct the target URL (e.g., http://mycluster-ui.mynamespace.svc.cluster.local:8091)
+	// Construct the target URL (e.g., http://mycluster.mynamespace.svc.cluster.local:8091)
 	targetURL := &url.URL{
 		Scheme: "http",
 		Host:   fmt.Sprintf("%s.%s.svc.cluster.local:8091", svcName, s.namespace),
@@ -125,10 +125,10 @@ func (s *Server) handleCouchbaseUIProxy(w http.ResponseWriter, r *http.Request) 
 
 	// Namespace is checked in server.Start()
 
-	// Create the service name (e.g., mycluster-ui)
-	svcName := clusterName + "-ui"
+	// Use the cluster name directly as the service name instead of appending "-ui"
+	svcName := clusterName
 
-	// Construct the target URL (e.g., http://mycluster-ui.mynamespace.svc.cluster.local:8091)
+	// Construct the target URL (e.g., http://mycluster.mynamespace.svc.cluster.local:8091)
 	targetURL := &url.URL{
 		Scheme: "http",
 		Host:   fmt.Sprintf("%s.%s.svc.cluster.local:8091", svcName, s.namespace),
