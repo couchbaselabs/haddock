@@ -5,9 +5,8 @@ set -e
 # List of images to import into the k3d cluster
 IMAGES=(
   "couchbase/server:7.6.0"
-  "ghcr.io/cb-vanilla/operator:2.8.1-142"
-  "ghcr.io/cb-vanilla/admission-controller:2.8.1-142"
-  "cod:latest"
+  "aayushsenapati/couch:operator-arm"
+  "aayushsenapati/couch:cod-arm"
 )
 
 # Check if cluster name is provided

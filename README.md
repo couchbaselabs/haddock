@@ -4,18 +4,35 @@ This repository contains a dashboard application for monitoring and managing Cou
 
 ## Compiling the Dashboard Binary
 
-To compile the dashboard binary, run the following command in the root of the project:
+To compile the dashboard binary, choose the appropriate command for your target platform:
 
+### For x86_64/amd64 platforms:
 ```bash
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -tags debug -a -installsuffix cgo -o dashboard cmd/cod/main.go
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -a -installsuffix cgo -o dashboard cmd/cod/main.go
+```
+
+### For ARM64 platforms:
+```bash
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -a -installsuffix cgo -o dashboard cmd/cod/main.go
 ```
 
 ## Building the Docker Image
 
-After compiling the binary, build the Docker image using the provided Dockerfile:
+After compiling the binary, build the Docker image for your target platform:
 
+### For x86_64/amd64 platforms:
 ```bash
-docker build -t cod:latest .
+docker build --platform=linux/amd64 -t cod:latest .
+```
+
+### For ARM64 platforms:
+```bash
+docker build --platform=linux/arm64 -t cod:latest .
+```
+
+### For multi-platform builds (optional):
+```bash
+docker buildx build --platform=linux/amd64,linux/arm64 -t cod:latest .
 ```
 
 ## Setting Up Kubernetes with Couchbase
@@ -126,6 +143,25 @@ Finally, deploy your Couchbase cluster:
 ```bash
 kubectl apply -f <your-couchbase-cluster-config>.yaml
 ```
+
+## Couchbase Cluster Configuration
+
+### Required Settings for Dashboard UI Access
+
+To access the Couchbase UI through the dashboard's reverse proxy, ensure your Couchbase cluster configuration includes the following setting:
+
+```yaml
+apiVersion: couchbase.com/v2
+kind: CouchbaseCluster
+metadata:
+  name: your-cluster-name
+spec:
+  networking:
+    exposeAdminConsole: true
+  # ... rest of your cluster configuration
+```
+
+**Important:** The `exposeAdminConsole: true` setting is **required** for the dashboard's reverse proxy functionality to work properly. Without this setting, you won't be able to access the Couchbase Web Console through the "Open Couchbase UI" button in the dashboard.
 
 ### 5. Access the Dashboard
 

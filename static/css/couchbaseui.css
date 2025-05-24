@@ -107,6 +107,9 @@ header h1 {
     cursor: pointer;
     transition: background-color 0.2s ease;
     font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .primary-button:hover {
