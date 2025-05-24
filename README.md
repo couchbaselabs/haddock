@@ -1,6 +1,6 @@
 # Couchbase Operator Dashboard (COD)
 
-This repository contains a dashboard application for monitoring and managing Couchbase clusters on Kubernetes.
+This repository contains a dashboard application for monitoring and managing the Couchbase Autonomous Operator and Couchbase clusters on Kubernetes.
 
 ## Compiling the Dashboard Binary
 
