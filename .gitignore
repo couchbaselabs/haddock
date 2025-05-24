@@ -1,9 +1,4 @@
-.devbox/
-coa/
-devbox.lock
-dashboard
 cluster-setup/
 .DS_Store
-metrics.txt
-cluster_resource.txt
+notes/
 bin/
