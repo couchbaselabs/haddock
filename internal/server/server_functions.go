@@ -807,6 +807,7 @@ func (s *Server) deleteCluster(obj interface{}) {
 
 	if deleted { // Broadcast only if deleted
 		s.broadcastClusters()
+		s.broadcastConditions()
 	}
 }
 
@@ -843,6 +844,16 @@ func (s *Server) updateConditions(obj interface{}) {
 
 	clusterName := unstructuredObj.GetName()
 	logger.Log.Debug("Processing conditions for cluster", zap.String("cluster", clusterName))
+
+	// Check if the cluster is still considered active before proceeding
+	s.clustersMutex.RLock()
+	_, clusterStillActive := s.clusters[clusterName]
+	s.clustersMutex.RUnlock()
+
+	if !clusterStillActive {
+		logger.Log.Debug("Skipping conditions update for cluster not in active list (likely deleted)", zap.String("cluster", clusterName))
+		return
+	}
 
 	// Extract conditions from status
 	status, found, err := unstructured.NestedMap(unstructuredObj.Object, "status")

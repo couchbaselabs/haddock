@@ -101,7 +101,12 @@ export function renderClusterTiles(clusterConditions) {
   const container = document.getElementById('clusterTilesContainer');
   if (!container || !clusterConditions) return;
   
-  container.innerHTML = '';
+  container.innerHTML = ''; // Clear previous tiles
+
+  if (Object.keys(clusterConditions).length === 0) {
+    container.innerHTML = '<p class="no-clusters-message">No clusters to display</p>';
+    return;
+  }
   
   Object.keys(clusterConditions).forEach(clusterName => {
     const conditions = clusterConditions[clusterName];
